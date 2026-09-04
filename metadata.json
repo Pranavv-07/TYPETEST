@@ -1,0 +1,6 @@
+{
+  "name": "TestType",
+  "description": "Typing speed assessment and proctoring platform with Monkeytype-style testing, coding & story modules, trainer class management, and institutional analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
