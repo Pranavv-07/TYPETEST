@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import {
   User,
   Student,
@@ -7,79 +7,136 @@ import {
   TypingTest,
   TypingSubmission,
   StudentCertificate,
-  TestReport
+  TestReport,
+  Department,
+  Batch,
+  AdminUser,
+  ViolationRecord,
+  AuditLogEntry
 } from '../types';
+import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import {
-  INITIAL_STUDENTS,
-  INITIAL_TRAINERS,
-  INITIAL_CLASSES,
-  INITIAL_TESTS,
-  INITIAL_SUBMISSIONS
-} from '../data/initialData';
+  authenticateWithDatabase,
+  fetchDepartments,
+  createDepartment as apiCreateDept,
+  updateDepartment as apiUpdateDept,
+  deleteDepartment as apiDeleteDept,
+  fetchBatches,
+  createBatch as apiCreateBatch,
+  updateBatch as apiUpdateBatch,
+  deleteBatch as apiDeleteBatch,
+  fetchClasses,
+  createClass as apiCreateClass,
+  updateClass as apiUpdateClass,
+  deleteClass as apiDeleteClass,
+  fetchStudents,
+  createStudent as apiCreateStudent,
+  updateStudent as apiUpdateStudent,
+  deleteStudent as apiDeleteStudent,
+  bulkImportStudents,
+  fetchTrainers,
+  createTrainer as apiCreateTrainer,
+  updateTrainer as apiUpdateTrainer,
+  deleteTrainer as apiDeleteTrainer,
+  fetchTests,
+  createTest as apiCreateTest,
+  updateTest as apiUpdateTest,
+  deleteTest as apiDeleteTest,
+  fetchSubmissions,
+  resetStudentAttemptAtomic,
+  fetchViolations,
+  fetchCertificates,
+  fetchAuditLogs,
+  recordAuditLog,
+  fetchAdmins,
+  createAdminUser,
+  startTestAttemptAtomic,
+  checkpointAttempt as apiCheckpointAttempt,
+  recordViolation as apiRecordViolation,
+  submitTestAttemptAtomic
+} from '../services/supabaseService';
 import { soundController } from '../utils/audio';
-import { authenticateCredentials, getSavedSession, clearAuthSession } from '../utils/auth';
 
 interface AppContextType {
   currentUser: User | null;
+  departments: Department[];
+  batches: Batch[];
+  classes: ClassRoom[];
   students: Student[];
   trainers: Trainer[];
-  classes: ClassRoom[];
+  admins: AdminUser[];
   tests: TypingTest[];
   submissions: TypingSubmission[];
   certificates: StudentCertificate[];
+  violations: ViolationRecord[];
+  auditLogs: AuditLogEntry[];
   reports: TestReport[];
   soundEnabled: boolean;
+  isLoading: boolean;
+  isDatabaseConnected: boolean;
   setSoundEnabled: (enabled: boolean) => void;
-  login: (identifier: string, pass: string) => { success: boolean; message?: string };
+  refreshData: () => Promise<void>;
+  login: (identifier: string, pass: string) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
-  createClass: (name: string, description?: string) => ClassRoom;
-  addStudentsToClass: (classId: string, studentIds: string[]) => void;
-  createCustomTest: (testData: Omit<TypingTest, 'id' | 'isPrebuilt'>) => TypingTest;
-  updateCustomTest: (testId: string, updatedData: Partial<TypingTest>) => void;
-  deleteTest: (testId: string) => void;
-  assignTestToClasses: (testId: string, classIds: string[]) => void;
-  toggleTestAssignment: (testId: string, classId: string) => void;
-  addStudent: (studentData: Omit<Student, 'id' | 'createdAt'>) => Student;
-  updateStudent: (studentId: string, updatedData: Partial<Student>) => void;
-  deleteStudent: (studentId: string) => void;
-  bulkAddStudents: (newStudents: Omit<Student, 'id' | 'createdAt'>[]) => number;
-  addTrainer: (trainerData: Omit<Trainer, 'id' | 'createdAt'>) => Trainer;
-  updateTrainer: (trainerId: string, updatedData: Partial<Trainer>) => void;
-  deleteTrainer: (trainerId: string) => void;
-  recordSubmission: (submissionData: Omit<TypingSubmission, 'id' | 'timestamp'>) => TypingSubmission | null;
-  resetStudentAttempt: (testId: string, studentId: string) => void;
+  // Departments
+  createDepartment: (dept: Omit<Department, 'id' | 'createdAt'>) => Promise<Department>;
+  updateDepartment: (id: string, updates: Partial<Department>) => Promise<void>;
+  deleteDepartment: (id: string) => Promise<void>;
+  // Batches
+  createBatch: (batch: Omit<Batch, 'id' | 'createdAt'>) => Promise<Batch>;
+  updateBatch: (id: string, updates: Partial<Batch>) => Promise<void>;
+  deleteBatch: (id: string) => Promise<void>;
+  // Classes
+  createClass: (name: string, description?: string, deptId?: string, batchId?: string) => Promise<ClassRoom>;
+  updateClass: (id: string, updates: Partial<ClassRoom>) => Promise<void>;
+  deleteClass: (id: string) => Promise<void>;
+  addStudentsToClass: (classId: string, studentIds: string[]) => Promise<void>;
+  // Students
+  addStudent: (studentData: Omit<Student, 'id' | 'createdAt'>) => Promise<Student>;
+  updateStudent: (studentId: string, updatedData: Partial<Student>) => Promise<void>;
+  deleteStudent: (studentId: string) => Promise<void>;
+  bulkAddStudents: (newStudents: Omit<Student, 'id' | 'createdAt'>[]) => Promise<number>;
+  // Trainers
+  addTrainer: (trainerData: Omit<Trainer, 'id' | 'createdAt'>) => Promise<Trainer>;
+  updateTrainer: (trainerId: string, updatedData: Partial<Trainer>) => Promise<void>;
+  deleteTrainer: (trainerId: string) => Promise<void>;
+  // Admins
+  addAdmin: (adminData: Omit<AdminUser, 'id' | 'createdAt'>) => Promise<AdminUser>;
+  // Tests
+  createCustomTest: (testData: Omit<TypingTest, 'id' | 'isPrebuilt'>) => Promise<TypingTest>;
+  updateCustomTest: (testId: string, updatedData: Partial<TypingTest>) => Promise<void>;
+  deleteTest: (testId: string) => Promise<void>;
+  assignTestToClasses: (testId: string, classIds: string[]) => Promise<void>;
+  toggleTestAssignment: (testId: string, classId: string) => Promise<void>;
+  // Submissions & Attempts
+  recordSubmission: (submissionData: Omit<TypingSubmission, 'id' | 'timestamp'>) => Promise<TypingSubmission | null>;
+  startAttempt: (testId: string, studentId: string) => Promise<{ success: boolean; attempt?: any; message?: string }>;
+  checkpoint: (attemptId: string, metrics: any) => Promise<boolean>;
+  logViolation: (attemptId: string, studentId: string, violationType: ViolationRecord['violationType'], meta?: any) => Promise<void>;
+  submitAttempt: (attemptId: string, submissionData: Omit<TypingSubmission, 'id' | 'timestamp'>) => Promise<{ success: boolean; submission?: TypingSubmission; certificate?: StudentCertificate; message?: string }>;
+  resetStudentAttempt: (testId: string, studentId: string, reason?: string) => Promise<void>;
+  // Reports & Certificates
   generateTestReport: (testId: string) => TestReport;
   deleteReport: (reportId: string) => void;
   getStudentCertificates: (studentId: string) => StudentCertificate[];
   downloadReportCSV: (report: TestReport) => void;
-  resetAllData: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const STORAGE_KEYS = {
-  USER: 'testtype_user_v2',
-  STUDENTS: 'testtype_students_v2',
-  TRAINERS: 'testtype_trainers_v2',
-  CLASSES: 'testtype_classes_v2',
-  TESTS: 'testtype_tests_v2',
-  SUBMISSIONS: 'testtype_submissions_v2',
-  CERTIFICATES: 'testtype_certificates_v2',
-  REPORTS: 'testtype_reports_v2',
-  SOUND: 'testtype_sound_v2'
-};
+const USER_SESSION_KEY = 'testtype_session_user';
+const SOUND_KEY = 'testtype_sound_v2';
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  // Initialize user from valid authenticated session or storage
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const isDatabaseConnected = isSupabaseConfigured();
+
+  // Active user in session
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     try {
-      const activeSession = getSavedSession();
-      if (activeSession?.user) return activeSession.user;
-
-      const saved = localStorage.getItem(STORAGE_KEYS.USER);
+      const saved = sessionStorage.getItem(USER_SESSION_KEY) || localStorage.getItem(USER_SESSION_KEY);
       if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && parsed.id) return parsed;
+        return JSON.parse(saved);
       }
     } catch (e) {
       console.error(e);
@@ -87,79 +144,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return null;
   });
 
-  const [students, setStudents] = useState<Student[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.STUDENTS);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error(e);
-    }
-    return INITIAL_STUDENTS;
-  });
-
-  const [trainers, setTrainers] = useState<Trainer[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.TRAINERS);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error(e);
-    }
-    return INITIAL_TRAINERS;
-  });
-
-  const [classes, setClasses] = useState<ClassRoom[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.CLASSES);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error(e);
-    }
-    return INITIAL_CLASSES;
-  });
-
-  const [tests, setTests] = useState<TypingTest[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.TESTS);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error(e);
-    }
-    return INITIAL_TESTS;
-  });
-
-  const [submissions, setSubmissions] = useState<TypingSubmission[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.SUBMISSIONS);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error(e);
-    }
-    return INITIAL_SUBMISSIONS;
-  });
-
-  const [certificates, setCertificates] = useState<StudentCertificate[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.CERTIFICATES);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error(e);
-    }
-    return [];
-  });
-
-  const [reports, setReports] = useState<TestReport[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.REPORTS);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error(e);
-    }
-    return [];
-  });
+  // Institutional data collections backed by Supabase
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [batches, setBatches] = useState<Batch[]>([]);
+  const [classes, setClasses] = useState<ClassRoom[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [trainers, setTrainers] = useState<Trainer[]>([]);
+  const [admins, setAdmins] = useState<AdminUser[]>([]);
+  const [tests, setTests] = useState<TypingTest[]>([]);
+  const [submissions, setSubmissions] = useState<TypingSubmission[]>([]);
+  const [certificates, setCertificates] = useState<StudentCertificate[]>([]);
+  const [violations, setViolations] = useState<ViolationRecord[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [reports, setReports] = useState<TestReport[]>([]);
 
   const [soundEnabled, setSoundEnabledState] = useState<boolean>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEYS.SOUND);
+      const saved = localStorage.getItem(SOUND_KEY);
       return saved !== null ? JSON.parse(saved) : true;
     } catch {
       return true;
@@ -169,81 +170,216 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const setSoundEnabled = (enabled: boolean) => {
     setSoundEnabledState(enabled);
     soundController.enabled = enabled;
-    localStorage.setItem(STORAGE_KEYS.SOUND, JSON.stringify(enabled));
+    localStorage.setItem(SOUND_KEY, JSON.stringify(enabled));
   };
 
-  // Sync state to LocalStorage
+  // Synchronize active session user
   useEffect(() => {
     if (currentUser) {
-      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(currentUser));
+      sessionStorage.setItem(USER_SESSION_KEY, JSON.stringify(currentUser));
+      localStorage.setItem(USER_SESSION_KEY, JSON.stringify(currentUser));
     } else {
-      localStorage.removeItem(STORAGE_KEYS.USER);
+      sessionStorage.removeItem(USER_SESSION_KEY);
+      localStorage.removeItem(USER_SESSION_KEY);
     }
   }, [currentUser]);
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(students));
-  }, [students]);
+  // Load authoritative institutional dataset from Supabase / Service
+  const refreshData = useCallback(async () => {
+    try {
+      const [
+        deptsData,
+        batchesData,
+        classesData,
+        studentsData,
+        trainersData,
+        adminsData,
+        testsData,
+        subsData,
+        certsData,
+        violsData,
+        logsData
+      ] = await Promise.all([
+        fetchDepartments(),
+        fetchBatches(),
+        fetchClasses(),
+        fetchStudents(),
+        fetchTrainers(),
+        fetchAdmins(),
+        fetchTests(),
+        fetchSubmissions(),
+        fetchCertificates(),
+        fetchViolations(),
+        fetchAuditLogs()
+      ]);
+
+      setDepartments(deptsData);
+      setBatches(batchesData);
+      setClasses(classesData);
+      setStudents(studentsData);
+      setTrainers(trainersData);
+      setAdmins(adminsData);
+      setTests(testsData);
+      setSubmissions(subsData);
+      setCertificates(certsData);
+      setViolations(violsData);
+      setAuditLogs(logsData);
+    } catch (err) {
+      console.error('Failed to load institutional records:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.TRAINERS, JSON.stringify(trainers));
-  }, [trainers]);
+    refreshData();
+  }, [refreshData]);
 
+  // Supabase Realtime Subscriptions (For live proctoring and examiner dashboards)
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.CLASSES, JSON.stringify(classes));
-  }, [classes]);
+    if (!isDatabaseConnected) return;
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.TESTS, JSON.stringify(tests));
-  }, [tests]);
+    const channel = supabase
+      .channel('public:institutional_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'attempts' }, () => {
+        fetchSubmissions().then(setSubmissions);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'violations' }, () => {
+        fetchViolations().then(setViolations);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tests' }, () => {
+        fetchTests().then(setTests);
+      })
+      .subscribe();
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(submissions));
-  }, [submissions]);
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [isDatabaseConnected]);
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.CERTIFICATES, JSON.stringify(certificates));
-  }, [certificates]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.REPORTS, JSON.stringify(reports));
-  }, [reports]);
-
-  // Unified Institutional Authentication
-  const login = (identifier: string, pass: string): { success: boolean; message?: string } => {
-    const result = authenticateCredentials(identifier, pass, trainers, students);
-    if (result.success && result.user) {
-      setCurrentUser(result.user);
+  // ==========================================================================
+  // AUTHENTICATION
+  // ==========================================================================
+  const login = async (identifier: string, pass: string): Promise<{ success: boolean; message?: string }> => {
+    const res = await authenticateWithDatabase(identifier, pass);
+    if (res.success && res.user) {
+      setCurrentUser(res.user);
       return { success: true };
     }
     return {
       success: false,
-      message: result.message || 'Invalid credentials. Please verify your username, roll number, and password.'
+      message: res.message || 'Invalid username or password.'
     };
   };
 
   const logout = () => {
-    clearAuthSession();
-    localStorage.removeItem(STORAGE_KEYS.USER);
-    sessionStorage.clear();
+    sessionStorage.removeItem(USER_SESSION_KEY);
+    localStorage.removeItem(USER_SESSION_KEY);
     setCurrentUser(null);
   };
 
-  // Trainer Class Operations
-  const createClass = (name: string, description?: string): ClassRoom => {
-    const newClass: ClassRoom = {
-      id: `class-${Date.now()}`,
-      name: name.trim(),
-      trainerId: currentUser?.id || 'trn-1',
-      description: description?.trim() || '',
-      studentIds: [],
-      createdAt: new Date().toISOString().split('T')[0]
-    };
-    setClasses(prev => [newClass, ...prev]);
-    return newClass;
+  // ==========================================================================
+  // DEPARTMENTS
+  // ==========================================================================
+  const createDepartment = async (dept: Omit<Department, 'id' | 'createdAt'>): Promise<Department> => {
+    const created = await apiCreateDept(dept);
+    setDepartments(prev => [...prev, created]);
+    recordAuditLog({
+      adminId: currentUser?.id,
+      adminName: currentUser?.name || 'Admin',
+      action: 'CREATE_DEPARTMENT',
+      entityType: 'department',
+      entityId: created.id,
+      details: { code: created.code, name: created.name }
+    });
+    return created;
   };
 
-  const addStudentsToClass = (classId: string, studentIds: string[]) => {
+  const updateDepartment = async (id: string, updates: Partial<Department>) => {
+    await apiUpdateDept(id, updates);
+    setDepartments(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d));
+  };
+
+  const deleteDepartment = async (id: string) => {
+    await apiDeleteDept(id);
+    setDepartments(prev => prev.filter(d => d.id !== id));
+  };
+
+  // ==========================================================================
+  // BATCHES
+  // ==========================================================================
+  const createBatch = async (batch: Omit<Batch, 'id' | 'createdAt'>): Promise<Batch> => {
+    const created = await apiCreateBatch(batch);
+    setBatches(prev => [created, ...prev]);
+    recordAuditLog({
+      adminId: currentUser?.id,
+      adminName: currentUser?.name || 'Admin',
+      action: 'CREATE_BATCH',
+      entityType: 'batch',
+      entityId: created.id,
+      details: { name: created.name, batchYear: created.batchYear }
+    });
+    return created;
+  };
+
+  const updateBatch = async (id: string, updates: Partial<Batch>) => {
+    await apiUpdateBatch(id, updates);
+    setBatches(prev => prev.map(b => b.id === id ? { ...b, ...updates } : b));
+  };
+
+  const deleteBatch = async (id: string) => {
+    await apiDeleteBatch(id);
+    setBatches(prev => prev.filter(b => b.id !== id));
+  };
+
+  // ==========================================================================
+  // CLASSES
+  // ==========================================================================
+  const createClass = async (
+    name: string,
+    description?: string,
+    deptId?: string,
+    batchId?: string
+  ): Promise<ClassRoom> => {
+    const created = await apiCreateClass({
+      name,
+      description,
+      departmentId: deptId,
+      batchId,
+      trainerId: currentUser?.id || 'trn-1',
+      studentIds: [],
+      status: 'active'
+    });
+    setClasses(prev => [created, ...prev]);
+    recordAuditLog({
+      adminId: currentUser?.id,
+      adminName: currentUser?.name || 'Admin',
+      action: 'CREATE_CLASS',
+      entityType: 'class',
+      entityId: created.id,
+      details: { name, code: created.code }
+    });
+    return created;
+  };
+
+  const updateClass = async (id: string, updates: Partial<ClassRoom>) => {
+    await apiUpdateClass(id, updates);
+    setClasses(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+  };
+
+  const deleteClass = async (id: string) => {
+    await apiDeleteClass(id);
+    setClasses(prev => prev.filter(c => c.id !== id));
+  };
+
+  const addStudentsToClass = async (classId: string, studentIds: string[]) => {
+    // Update students in state & database
+    for (const sId of studentIds) {
+      await apiUpdateStudent(sId, { classId });
+    }
+    setStudents(prev =>
+      prev.map(s => studentIds.includes(s.id) ? { ...s, classId } : s)
+    );
     setClasses(prev =>
       prev.map(c => {
         if (c.id === classId) {
@@ -253,255 +389,193 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return c;
       })
     );
-    // Also update student's classId pointer
-    setStudents(prev =>
-      prev.map(s => {
-        if (studentIds.includes(s.id)) {
-          return { ...s, classId };
-        }
-        return s;
-      })
-    );
   };
 
-  // Custom Test Assignment & Management Operations
-  const createCustomTest = (testData: Omit<TypingTest, 'id' | 'isPrebuilt'>): TypingTest => {
-    const newTest: TypingTest = {
-      ...testData,
-      id: `test-custom-${Date.now()}`,
-      isPrebuilt: false,
-      createdBy: currentUser?.id || 'trainer',
-      createdAt: new Date().toISOString()
-    };
-    setTests(prev => [newTest, ...prev]);
-    return newTest;
-  };
-
-  const updateCustomTest = (testId: string, updatedData: Partial<TypingTest>) => {
-    setTests(prev =>
-      prev.map(t => (t.id === testId ? { ...t, ...updatedData } : t))
-    );
-  };
-
-  const deleteTest = (testId: string) => {
-    setTests(prev => prev.filter(t => t.id !== testId));
-  };
-
-  const assignTestToClasses = (testId: string, classIds: string[]) => {
-    setTests(prev =>
-      prev.map(t => (t.id === testId ? { ...t, assignedClassIds: classIds } : t))
-    );
-  };
-
-  const toggleTestAssignment = (testId: string, classId: string) => {
-    setTests(prev =>
-      prev.map(t => {
-        if (t.id === testId) {
-          const current = t.assignedClassIds || [];
-          const exists = current.includes(classId);
-          const updated = exists ? current.filter(id => id !== classId) : [...current, classId];
-          return { ...t, assignedClassIds: updated };
-        }
-        return t;
-      })
-    );
-  };
-
-  // Student Directory Operations (Admin & Trainer)
-  const addStudent = (studentData: Omit<Student, 'id' | 'createdAt'>): Student => {
-    const newStudent: Student = {
-      ...studentData,
-      id: `std-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      createdAt: new Date().toISOString().split('T')[0]
-    };
-    setStudents(prev => [newStudent, ...prev]);
-    if (newStudent.classId) {
-      addStudentsToClass(newStudent.classId, [newStudent.id]);
-    }
-    return newStudent;
-  };
-
-  const updateStudent = (studentId: string, updatedData: Partial<Student>) => {
-    setStudents(prev =>
-      prev.map(s => {
-        if (s.id === studentId) {
-          const updated = { ...s, ...updatedData };
-          // If class changed, maintain class references
-          if (updatedData.classId && updatedData.classId !== s.classId) {
-            if (s.classId) {
-              setClasses(cls =>
-                cls.map(c =>
-                  c.id === s.classId
-                    ? { ...c, studentIds: c.studentIds.filter(id => id !== studentId) }
-                    : c
-                )
-              );
-            }
-            addStudentsToClass(updatedData.classId, [studentId]);
-          }
-          return updated;
-        }
-        return s;
-      })
-    );
-  };
-
-  const deleteStudent = (studentId: string) => {
-    setStudents(prev => prev.filter(s => s.id !== studentId));
-    // Remove from classes
-    setClasses(prev =>
-      prev.map(c => ({
-        ...c,
-        studentIds: c.studentIds.filter(id => id !== studentId)
-      }))
-    );
-    // Remove submissions
-    setSubmissions(prev => prev.filter(sub => sub.studentId !== studentId));
-  };
-
-  const bulkAddStudents = (newStudentsData: Omit<Student, 'id' | 'createdAt'>[]): number => {
-    const created: Student[] = newStudentsData.map((data, idx) => ({
-      ...data,
-      id: `std-bulk-${Date.now()}-${idx}`,
-      createdAt: new Date().toISOString().split('T')[0]
-    }));
-
-    setStudents(prev => [...created, ...prev]);
-
-    // Group by class if specified
-    created.forEach(s => {
-      if (s.classId) {
-        addStudentsToClass(s.classId, [s.id]);
-      }
+  // ==========================================================================
+  // STUDENTS
+  // ==========================================================================
+  const addStudent = async (studentData: Omit<Student, 'id' | 'createdAt'>): Promise<Student> => {
+    const created = await apiCreateStudent(studentData);
+    setStudents(prev => [created, ...prev]);
+    recordAuditLog({
+      adminId: currentUser?.id,
+      adminName: currentUser?.name || 'Admin',
+      action: 'CREATE_STUDENT',
+      entityType: 'student',
+      entityId: created.id,
+      details: { rollNo: created.rollNo, name: created.name }
     });
-
-    return created.length;
+    return created;
   };
 
-  // Trainer Management (Admin Full Authority)
-  const addTrainer = (trainerData: Omit<Trainer, 'id' | 'createdAt'>): Trainer => {
-    const newTrainer: Trainer = {
-      ...trainerData,
-      id: `trn-${Date.now()}`,
-      createdAt: new Date().toISOString().split('T')[0]
-    };
-    setTrainers(prev => [...prev, newTrainer]);
-    return newTrainer;
+  const updateStudent = async (studentId: string, updatedData: Partial<Student>) => {
+    await apiUpdateStudent(studentId, updatedData);
+    setStudents(prev => prev.map(s => s.id === studentId ? { ...s, ...updatedData } : s));
   };
 
-  const updateTrainer = (trainerId: string, updatedData: Partial<Trainer>) => {
-    setTrainers(prev =>
-      prev.map(t => (t.id === trainerId ? { ...t, ...updatedData } : t))
-    );
+  const deleteStudent = async (studentId: string) => {
+    await apiDeleteStudent(studentId);
+    setStudents(prev => prev.filter(s => s.id !== studentId));
   };
 
-  const deleteTrainer = (trainerId: string) => {
+  const bulkAddStudents = async (newStudentsData: Omit<Student, 'id' | 'createdAt'>[]): Promise<number> => {
+    const res = await bulkImportStudents(newStudentsData);
+    const reloaded = await fetchStudents();
+    setStudents(reloaded);
+    recordAuditLog({
+      adminId: currentUser?.id,
+      adminName: currentUser?.name || 'Admin',
+      action: 'BULK_IMPORT_STUDENTS',
+      entityType: 'student',
+      details: { totalImported: res.valid, duplicates: res.duplicates }
+    });
+    return res.valid;
+  };
+
+  // ==========================================================================
+  // TRAINERS
+  // ==========================================================================
+  const addTrainer = async (trainerData: Omit<Trainer, 'id' | 'createdAt'>): Promise<Trainer> => {
+    const created = await apiCreateTrainer(trainerData);
+    setTrainers(prev => [...prev, created]);
+    recordAuditLog({
+      adminId: currentUser?.id,
+      adminName: currentUser?.name || 'Admin',
+      action: 'CREATE_TRAINER',
+      entityType: 'trainer',
+      entityId: created.id,
+      details: { username: created.username, name: created.name }
+    });
+    return created;
+  };
+
+  const updateTrainer = async (trainerId: string, updatedData: Partial<Trainer>) => {
+    await apiUpdateTrainer(trainerId, updatedData);
+    setTrainers(prev => prev.map(t => t.id === trainerId ? { ...t, ...updatedData } : t));
+  };
+
+  const deleteTrainer = async (trainerId: string) => {
+    await apiDeleteTrainer(trainerId);
     setTrainers(prev => prev.filter(t => t.id !== trainerId));
   };
 
-  // Reset Student Attempt (Admin / Trainer Override)
-  const resetStudentAttempt = (testId: string, studentId: string) => {
-    setSubmissions(prev =>
-      prev.filter(sub => !(sub.testId === testId && sub.studentId === studentId))
-    );
+  // ==========================================================================
+  // ADMINS
+  // ==========================================================================
+  const addAdmin = async (adminData: Omit<AdminUser, 'id' | 'createdAt'>): Promise<AdminUser> => {
+    const created = await createAdminUser(adminData);
+    setAdmins(prev => [...prev, created]);
+    return created;
   };
 
-  // Certificate Evaluation Helper
-  const checkAndAwardCertificate = (
-    sub: TypingSubmission,
-    allSubs: TypingSubmission[]
+  // ==========================================================================
+  // TESTS & ASSIGNMENTS
+  // ==========================================================================
+  const createCustomTest = async (testData: Omit<TypingTest, 'id' | 'isPrebuilt'>): Promise<TypingTest> => {
+    const created = await apiCreateTest(testData);
+    setTests(prev => [created, ...prev]);
+    recordAuditLog({
+      adminId: currentUser?.id,
+      adminName: currentUser?.name || 'Trainer',
+      action: 'CREATE_TEST',
+      entityType: 'test',
+      entityId: created.id,
+      details: { title: created.title, category: created.category }
+    });
+    return created;
+  };
+
+  const updateCustomTest = async (testId: string, updatedData: Partial<TypingTest>) => {
+    await apiUpdateTest(testId, updatedData);
+    setTests(prev => prev.map(t => t.id === testId ? { ...t, ...updatedData } : t));
+  };
+
+  const deleteTest = async (testId: string) => {
+    await apiDeleteTest(testId);
+    setTests(prev => prev.filter(t => t.id !== testId));
+  };
+
+  const assignTestToClasses = async (testId: string, classIds: string[]) => {
+    await apiUpdateTest(testId, { assignedClassIds: classIds });
+    setTests(prev => prev.map(t => t.id === testId ? { ...t, assignedClassIds: classIds } : t));
+  };
+
+  const toggleTestAssignment = async (testId: string, classId: string) => {
+    const test = tests.find(t => t.id === testId);
+    if (!test) return;
+    const current = test.assignedClassIds || [];
+    const exists = current.includes(classId);
+    const updated = exists ? current.filter(id => id !== classId) : [...current, classId];
+    await assignTestToClasses(testId, updated);
+  };
+
+  // ==========================================================================
+  // ATTEMPTS & SUBMISSIONS
+  // ==========================================================================
+  const startAttempt = async (testId: string, studentId: string) => {
+    return await startTestAttemptAtomic(testId, studentId);
+  };
+
+  const checkpoint = async (attemptId: string, metrics: any) => {
+    return await apiCheckpointAttempt(attemptId, metrics);
+  };
+
+  const logViolation = async (
+    attemptId: string,
+    studentId: string,
+    violationType: ViolationRecord['violationType'],
+    meta?: any
   ) => {
-    if (sub.accuracy < 90 || sub.netWpm < 30) return;
-
-    // Determine student's prior submissions
-    const priorSubs = allSubs.filter(
-      s => s.studentId === sub.studentId && s.id !== sub.id
-    );
-    const priorMaxWpm = priorSubs.length > 0 ? Math.max(...priorSubs.map(s => s.netWpm)) : 0;
-
-    let milestoneTitle = '';
-    if (sub.netWpm >= 100 && priorMaxWpm < 100) {
-      milestoneTitle = 'Grandmaster Typist — 100+ WPM Achievement';
-    } else if (sub.netWpm >= 80 && priorMaxWpm < 80) {
-      milestoneTitle = 'Diamond Speed Typist — 80+ WPM Milestone';
-    } else if (sub.netWpm >= 60 && priorMaxWpm < 60) {
-      milestoneTitle = 'Gold Speed Typist — 60+ WPM Milestone';
-    } else if (sub.netWpm >= 40 && priorMaxWpm < 40) {
-      milestoneTitle = 'Silver Proficiency Typist — 40+ WPM Milestone';
-    } else if (sub.netWpm > priorMaxWpm && sub.netWpm - priorMaxWpm >= 5) {
-      milestoneTitle = `Personal Best Breakthrough — ${sub.netWpm} WPM Excellence`;
-    }
-
-    if (!milestoneTitle) return;
-
-    // Check if duplicate certificate exists
-    const existing = certificates.find(
-      c => c.studentId === sub.studentId && c.achievementTitle === milestoneTitle
-    );
-    if (existing) return;
-
-    const newCert: StudentCertificate = {
-      id: `cert-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      studentId: sub.studentId,
-      studentName: sub.studentName,
-      rollNo: sub.rollNo,
-      achievementTitle: milestoneTitle,
-      wpm: sub.netWpm,
-      accuracy: sub.accuracy,
-      testTitle: sub.testTitle,
-      issuedAt: new Date().toISOString().split('T')[0],
-      issuingAuthority: 'Dept. of CSE',
-      verificationCode: `TT-CSE-${Date.now().toString(36).toUpperCase()}`
-    };
-
-    setCertificates(prev => [newCert, ...prev]);
+    await apiRecordViolation(attemptId, studentId, violationType, meta);
   };
 
-  // Record Typing Submission (Enforces Single Attempt for Custom Tests & Anti-Cheat)
-  const recordSubmission = (
+  const submitAttempt = async (
+    attemptId: string,
     submissionData: Omit<TypingSubmission, 'id' | 'timestamp'>
-  ): TypingSubmission | null => {
-    // Check if test is a custom assignment
-    const targetTest = tests.find(t => t.id === submissionData.testId);
-    if (targetTest?.isCustomAssignment) {
-      const alreadyAttempted = submissions.some(
-        sub => sub.testId === submissionData.testId && sub.studentId === submissionData.studentId
-      );
-      if (alreadyAttempted) {
-        console.warn('Student has already attempted this custom test. Single attempt enforced.');
-        return null;
-      }
+  ) => {
+    const res = await submitTestAttemptAtomic(attemptId, submissionData);
+    if (res.submission) {
+      setSubmissions(prev => [res.submission!, ...prev]);
     }
-
-    // Backend anti-cheat sanity check
-    if (submissionData.netWpm > 280 && submissionData.timeTaken < 5) {
-      console.warn('Suspicious submission flagged for anti-cheat verification.');
+    if (res.certificate) {
+      setCertificates(prev => [res.certificate!, ...prev]);
     }
-
-    const now = new Date();
-    const formattedDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-    const newSubmission: TypingSubmission = {
-      ...submissionData,
-      id: `sub-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      timestamp: formattedDate
-    };
-
-    const updatedSubmissions = [newSubmission, ...submissions];
-    setSubmissions(updatedSubmissions);
-
-    // Evaluate certificate award
-    checkAndAwardCertificate(newSubmission, updatedSubmissions);
-
-    return newSubmission;
+    return res;
   };
 
-  // Professional Test Report Generation
+  const recordSubmission = async (
+    submissionData: Omit<TypingSubmission, 'id' | 'timestamp'>
+  ): Promise<TypingSubmission | null> => {
+    const res = await submitTestAttemptAtomic('', submissionData);
+    if (res.submission) {
+      setSubmissions(prev => [res.submission!, ...prev]);
+      if (res.certificate) {
+        setCertificates(prev => [res.certificate!, ...prev]);
+      }
+      return res.submission;
+    }
+    return null;
+  };
+
+  const resetStudentAttempt = async (testId: string, studentId: string, reason: string = 'Authorized re-examination') => {
+    await resetStudentAttemptAtomic(
+      testId,
+      studentId,
+      currentUser?.id || 'admin',
+      currentUser?.name || 'Administrator',
+      reason
+    );
+    setSubmissions(prev => prev.filter(s => !(s.testId === testId && s.studentId === studentId)));
+  };
+
+  // ==========================================================================
+  // REPORTS & CERTIFICATES
+  // ==========================================================================
   const generateTestReport = (testId: string): TestReport => {
     const test = tests.find(t => t.id === testId);
     const testTitle = test?.title || 'Typing Assessment';
-    const testDuration = test?.timeLimit || 60;
+    const testDuration = test?.timeLimit || 120;
 
-    // Gather all assigned students
     let assignedStudentList: Student[] = [];
     if (test?.assignedStudentIds && test.assignedStudentIds.length > 0) {
       assignedStudentList = students.filter(s => test.assignedStudentIds?.includes(s.id));
@@ -516,7 +590,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const testSubmissions = submissions.filter(s => s.testId === testId);
 
-    // Map each assigned student with their result
     const studentResults: TestReport['studentResults'] = assignedStudentList.map(std => {
       const sub = testSubmissions.find(s => s.studentId === std.id);
       if (sub) {
@@ -543,7 +616,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       };
     });
 
-    // Rank completed students by Net WPM desc, then Accuracy desc
     const completedStudents = studentResults
       .filter(r => r.status === 'completed')
       .sort((a, b) => (b.wpm || 0) - (a.wpm || 0) || (b.accuracy || 0) - (a.accuracy || 0));
@@ -640,45 +712,39 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     document.body.removeChild(link);
   };
 
-  const resetAllData = () => {
-    localStorage.removeItem(STORAGE_KEYS.STUDENTS);
-    localStorage.removeItem(STORAGE_KEYS.TRAINERS);
-    localStorage.removeItem(STORAGE_KEYS.CLASSES);
-    localStorage.removeItem(STORAGE_KEYS.TESTS);
-    localStorage.removeItem(STORAGE_KEYS.SUBMISSIONS);
-    localStorage.removeItem(STORAGE_KEYS.CERTIFICATES);
-    localStorage.removeItem(STORAGE_KEYS.REPORTS);
-    setStudents(INITIAL_STUDENTS);
-    setTrainers(INITIAL_TRAINERS);
-    setClasses(INITIAL_CLASSES);
-    setTests(INITIAL_TESTS);
-    setSubmissions(INITIAL_SUBMISSIONS);
-    setCertificates([]);
-    setReports([]);
-  };
-
   return (
     <AppContext.Provider
       value={{
         currentUser,
+        departments,
+        batches,
+        classes,
         students,
         trainers,
-        classes,
+        admins,
         tests,
         submissions,
         certificates,
+        violations,
+        auditLogs,
         reports,
         soundEnabled,
+        isLoading,
+        isDatabaseConnected,
         setSoundEnabled,
+        refreshData,
         login,
         logout,
+        createDepartment,
+        updateDepartment,
+        deleteDepartment,
+        createBatch,
+        updateBatch,
+        deleteBatch,
         createClass,
+        updateClass,
+        deleteClass,
         addStudentsToClass,
-        createCustomTest,
-        updateCustomTest,
-        deleteTest,
-        assignTestToClasses,
-        toggleTestAssignment,
         addStudent,
         updateStudent,
         deleteStudent,
@@ -686,13 +752,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         addTrainer,
         updateTrainer,
         deleteTrainer,
+        addAdmin,
+        createCustomTest,
+        updateCustomTest,
+        deleteTest,
+        assignTestToClasses,
+        toggleTestAssignment,
         recordSubmission,
+        startAttempt,
+        checkpoint,
+        logViolation,
+        submitAttempt,
         resetStudentAttempt,
         generateTestReport,
         deleteReport,
         getStudentCertificates,
-        downloadReportCSV,
-        resetAllData
+        downloadReportCSV
       }}
     >
       {children}

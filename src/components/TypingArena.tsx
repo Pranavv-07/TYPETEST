@@ -28,7 +28,16 @@ interface TypingArenaProps {
 }
 
 export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitProctored }) => {
-  const { currentUser, classes, recordSubmission, soundEnabled } = useApp();
+  const {
+    currentUser,
+    classes,
+    recordSubmission,
+    soundEnabled,
+    startAttempt,
+    checkpoint,
+    logViolation,
+    submitAttempt
+  } = useApp();
 
   // Mode selection (if not an active proctored assessment)
   const isAssessment = Boolean(initialTest);
@@ -37,6 +46,10 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
   );
   const [timeOption, setTimeOption] = useState<number>(initialTest?.timeLimit || 30);
   const [wordOption, setWordOption] = useState<number>(25);
+
+  // Attempt authorization & status
+  const [attemptBlockedError, setAttemptBlockedError] = useState<string | null>(null);
+  const attemptIdRef = useRef<string | null>(null);
 
   // Target text generation
   const [targetText, setTargetText] = useState<string>('');
@@ -52,6 +65,19 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
   const [testFinished, setTestFinished] = useState<boolean>(false);
   const [timeLeft, setTimeLeft] = useState<number>(timeOption);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
+
+  // Initialize atomic attempt in Supabase if proctored assessment
+  useEffect(() => {
+    if (initialTest && currentUser) {
+      startAttempt(initialTest.id, currentUser.id).then(res => {
+        if (!res.success) {
+          setAttemptBlockedError(res.message || 'Unable to start examination attempt.');
+        } else if (res.attempt) {
+          attemptIdRef.current = res.attempt.id;
+        }
+      });
+    }
+  }, [initialTest, currentUser, startAttempt]);
 
   // Keystrokes Tracking (Typing.com / Monkeytype accuracy calculation)
   const totalKeystrokesRef = useRef<number>(0);
@@ -164,19 +190,55 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
     resetTest();
   }, [resetTest]);
 
-  // Anti-Cheat Window Blur Tracker
+  // Anti-Cheat Window Blur Tracker & Visibility Change
   useEffect(() => {
     const handleBlur = () => {
       if (testStarted && !testFinished) {
         setProctorBlurFlags(prev => prev + 1);
         setShowBlurWarning(true);
         setTimeout(() => setShowBlurWarning(false), 4000);
+        if (attemptIdRef.current && currentUser) {
+          logViolation(attemptIdRef.current, currentUser.id, 'window_blur', { elapsedSeconds });
+        }
+      }
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden' && testStarted && !testFinished) {
+        setProctorBlurFlags(prev => prev + 1);
+        setShowBlurWarning(true);
+        setTimeout(() => setShowBlurWarning(false), 4000);
+        if (attemptIdRef.current && currentUser) {
+          logViolation(attemptIdRef.current, currentUser.id, 'visibility_change', { elapsedSeconds });
+        }
       }
     };
 
     window.addEventListener('blur', handleBlur);
-    return () => window.removeEventListener('blur', handleBlur);
-  }, [testStarted, testFinished]);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('blur', handleBlur);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [testStarted, testFinished, logViolation, currentUser, elapsedSeconds]);
+
+  // Periodic Checkpoint: saves progress every 15 seconds to PostgreSQL without blocking typing flow
+  useEffect(() => {
+    if (!testStarted || testFinished || !attemptIdRef.current) return;
+    const checkpointTimer = setInterval(() => {
+      const curr = statsRef.current;
+      checkpoint(attemptIdRef.current!, {
+        netWpm: curr.netWpm,
+        rawWpm: curr.rawWpm,
+        accuracy: curr.accuracy,
+        correctChars: curr.correctChars,
+        totalChars: curr.totalTypedChars,
+        errors: curr.errors,
+        violationCount: proctorBlurFlags
+      });
+    }, 15000);
+    return () => clearInterval(checkpointTimer);
+  }, [testStarted, testFinished, checkpoint, proctorBlurFlags]);
 
   // Auto-scroll the word container to keep active word visible
   useEffect(() => {
@@ -275,7 +337,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
     // If logged in as student or in assessment mode, record submission in persistent state
     if (currentUser) {
       const studentClass = classes.find(c => c.id === currentUser.classId) || classes[0];
-      recordSubmission({
+      submitAttempt(attemptIdRef.current || '', {
         testId: initialTest?.id || `practice-${activeMode}`,
         testTitle: initialTest?.title || `Practice Test (${activeMode.toUpperCase()})`,
         testCategory: initialTest?.category || (activeMode === 'code' ? 'code' : activeMode === 'story' ? 'story' : 'standard'),
@@ -300,7 +362,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
         history: speedHistory
       });
     }
-  }, [activeMode, classes, currentUser, elapsedSeconds, initialTest, isAssessment, proctorBlurFlags, recordSubmission, speedHistory]);
+  }, [activeMode, classes, currentUser, elapsedSeconds, initialTest, isAssessment, proctorBlurFlags, submitAttempt, speedHistory]);
 
   // Real-time High Frequency Clock:
   // Measures real elapsed time via performance.now().
@@ -478,6 +540,29 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+      {/* Blocked Examination Attempt Banner / Screen */}
+      {attemptBlockedError && (
+        <div className="bg-rose-950/80 border-2 border-rose-500 rounded-2xl p-6 text-center space-y-4 shadow-2xl shadow-rose-950/50">
+          <div className="w-14 h-14 mx-auto rounded-full bg-rose-500/20 border border-rose-500/50 flex items-center justify-center text-rose-400">
+            <ShieldAlert className="w-8 h-8" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-rose-200">Examination Access Restricted</h2>
+            <p className="text-sm text-rose-300/80 mt-1 max-w-lg mx-auto font-mono">
+              {attemptBlockedError}
+            </p>
+          </div>
+          {onExitProctored && (
+            <button
+              onClick={onExitProctored}
+              className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-sm transition-colors border border-slate-700"
+            >
+              Return to Student Dashboard
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Anti-cheat tab switch warning banner */}
       {showBlurWarning && (
         <div className="bg-rose-500/15 border border-rose-500/40 text-rose-300 p-3 rounded-xl flex items-center justify-between animate-bounce text-xs font-semibold">
