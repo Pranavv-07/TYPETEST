@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { Student, Trainer, TypingTest, Department, Batch, ClassRoom } from '../types';
 import {
@@ -34,9 +34,17 @@ import {
   Clock
 } from 'lucide-react';
 import { DatabaseDiagnosticModal } from './DatabaseDiagnosticModal';
+import { checkDatabaseConnection, DatabaseConnectionStatus } from '../services/supabaseService';
 
 export const AdminPortal: React.FC = () => {
   const [showDbDiagModal, setShowDbDiagModal] = useState(false);
+  const [dbStatus, setDbStatus] = useState<DatabaseConnectionStatus | null>(null);
+  const [studentModalError, setStudentModalError] = useState('');
+  const [bulkErrorMsg, setBulkErrorMsg] = useState('');
+
+  useEffect(() => {
+    checkDatabaseConnection().then(setDbStatus).catch(console.error);
+  }, []);
   const {
     departments,
     batches,
@@ -185,6 +193,7 @@ export const AdminPortal: React.FC = () => {
   const handleBulkUpload = async () => {
     if (parsedPreview.length === 0) return;
     setIsSubmitting(true);
+    setBulkErrorMsg('');
     try {
       const selectedClass = classes.find(c => c.id === bulkClassId);
       const studentObjects = parsedPreview.map(p => ({
@@ -199,6 +208,8 @@ export const AdminPortal: React.FC = () => {
       setPasteData('');
       setParsedPreview([]);
       setTimeout(() => setBulkSuccessMsg(''), 5000);
+    } catch (err: any) {
+      setBulkErrorMsg(err.message || 'Failed to bulk import students.');
     } finally {
       setIsSubmitting(false);
     }
@@ -209,18 +220,23 @@ export const AdminPortal: React.FC = () => {
     e.preventDefault();
     if (!newRollNo.trim() || !newStudentName.trim()) return;
 
-    await addStudent({
-      rollNo: newRollNo.trim().toUpperCase(),
-      name: newStudentName.trim(),
-      batch: newStudentBatch.trim(),
-      classId: newStudentClass,
-      password: newStudentPassword.trim() || undefined
-    });
+    setStudentModalError('');
+    try {
+      await addStudent({
+        rollNo: newRollNo.trim().toUpperCase(),
+        name: newStudentName.trim(),
+        batch: newStudentBatch.trim(),
+        classId: newStudentClass,
+        password: newStudentPassword.trim() || undefined
+      });
 
-    setNewRollNo('');
-    setNewStudentName('');
-    setNewStudentPassword('');
-    setShowAddStudentModal(false);
+      setNewRollNo('');
+      setNewStudentName('');
+      setNewStudentPassword('');
+      setShowAddStudentModal(false);
+    } catch (err: any) {
+      setStudentModalError(err.message || 'Failed to add student to database.');
+    }
   };
 
   const handleSaveStudentEdit = async (e: React.FormEvent) => {
@@ -390,6 +406,31 @@ export const AdminPortal: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Missing Tables / Setup Alert */}
+      {dbStatus && dbStatus.isConnected && (!dbStatus.tablesFound.students || !dbStatus.tablesFound.admins) && (
+        <div className="bg-amber-950/40 border border-amber-500/50 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 text-amber-200 animate-in fade-in">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <h4 className="font-bold text-sm text-slate-100 flex items-center gap-2">
+                <span>Supabase Database Schema Setup Required</span>
+                <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">Action Needed</span>
+              </h4>
+              <p className="text-xs text-amber-300/90 mt-1 leading-relaxed">
+                Your Supabase project is connected, but the database tables (<code className="font-mono bg-slate-900 px-1 py-0.5 rounded text-cyan-300">students</code>, <code className="font-mono bg-slate-900 px-1 py-0.5 rounded text-cyan-300">admins</code>, <code className="font-mono bg-slate-900 px-1 py-0.5 rounded text-cyan-300">tests</code>) do not exist yet. Created students cannot be saved to the cloud database or log in until you run the SQL setup script.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowDbDiagModal(true)}
+            className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs rounded-xl shrink-0 transition-colors shadow-lg shadow-amber-500/10 flex items-center justify-center gap-1.5"
+          >
+            <Database className="w-4 h-4" />
+            <span>Open 1-Click SQL Setup</span>
+          </button>
+        </div>
+      )}
 
       {/* Tabs Navigation */}
       <div className="flex border-b border-slate-800 gap-4 text-sm font-semibold overflow-x-auto pb-1">
@@ -1095,6 +1136,23 @@ export const AdminPortal: React.FC = () => {
               </div>
             )}
 
+            {bulkErrorMsg && (
+              <div className="p-4 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs space-y-2">
+                <div className="font-semibold flex items-center gap-2 text-rose-200">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>{bulkErrorMsg}</span>
+                </div>
+                {bulkErrorMsg.includes('SQL') || bulkErrorMsg.includes('missing') || bulkErrorMsg.includes('table') ? (
+                  <button
+                    onClick={() => setShowDbDiagModal(true)}
+                    className="px-3 py-1.5 bg-rose-500 hover:bg-rose-400 text-slate-950 font-bold rounded-lg text-xs"
+                  >
+                    Open Database Setup Guide & Copy SQL
+                  </button>
+                ) : null}
+              </div>
+            )}
+
             <div className="grid md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-xs font-mono text-slate-400">Target Classroom Assignment</label>
@@ -1313,8 +1371,30 @@ export const AdminPortal: React.FC = () => {
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4">
             <div className="flex justify-between items-center">
               <h3 className="font-bold text-slate-100 text-sm">Add Student Candidate</h3>
-              <button onClick={() => setShowAddStudentModal(false)}><X className="w-4 h-4 text-slate-400" /></button>
+              <button onClick={() => { setShowAddStudentModal(false); setStudentModalError(''); }}><X className="w-4 h-4 text-slate-400" /></button>
             </div>
+
+            {studentModalError && (
+              <div className="p-3 bg-rose-500/15 border border-rose-500/30 rounded-xl text-xs text-rose-300 space-y-2">
+                <div className="font-semibold flex items-center gap-1.5 text-rose-200">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>{studentModalError}</span>
+                </div>
+                {studentModalError.includes('setup') || studentModalError.includes('SQL') || studentModalError.includes('missing') ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddStudentModal(false);
+                      setStudentModalError('');
+                      setShowDbDiagModal(true);
+                    }}
+                    className="w-full py-1.5 bg-rose-500 hover:bg-rose-400 text-slate-950 font-bold rounded-lg text-xs transition-colors"
+                  >
+                    Open Database Setup Guide & Copy SQL
+                  </button>
+                ) : null}
+              </div>
+            )}
             <form onSubmit={handleCreateSingleStudent} className="space-y-3 text-xs">
               <div>
                 <label className="font-mono text-slate-400">Roll Number</label>

@@ -501,53 +501,24 @@ export const DatabaseDiagnosticModal: React.FC<DatabaseDiagnosticModalProps> = (
                 </div>
               </div>
 
-              {/* Student 1 */}
+              {/* Student Login Instructions */}
               <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-emerald-400">Candidate 1 (D. S. V. Phanisri)</span>
-                  {onFillSampleCredentials && (
-                    <button
-                      onClick={() => {
-                        onFillSampleCredentials('24P31A42S4', '1234');
-                        onClose();
-                      }}
-                      className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 transition-colors"
-                    >
-                      Fill Student Login
-                    </button>
-                  )}
+                  <span className="font-bold text-emerald-400">Student Examinees</span>
+                  <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    Managed by Admin
+                  </span>
                 </div>
                 <div className="font-mono text-[11px] text-slate-300">
-                  Roll No: <span className="text-slate-100 font-bold">24P31A42S4</span> &bull; Password: <span className="text-slate-100 font-bold">1234</span> (or roll number)
-                </div>
-              </div>
-
-              {/* Student 2 */}
-              <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-emerald-400">Candidate 2 (Sri nithya)</span>
-                  {onFillSampleCredentials && (
-                    <button
-                      onClick={() => {
-                        onFillSampleCredentials('24P31A05B3', '1234');
-                        onClose();
-                      }}
-                      className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 transition-colors"
-                    >
-                      Fill Student Login
-                    </button>
-                  )}
-                </div>
-                <div className="font-mono text-[11px] text-slate-300">
-                  Roll No: <span className="text-slate-100 font-bold">24P31A05B3</span> &bull; Password: <span className="text-slate-100 font-bold">1234</span>
+                  Identifier: <span className="text-slate-100 font-bold">Student Roll Number</span> &bull; Password: <span className="text-slate-100 font-bold">Roll Number</span> or <span className="text-slate-100 font-bold">1234</span>
                 </div>
               </div>
 
               <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-[11px] text-slate-400 space-y-1">
-                <p className="font-bold text-slate-300">Default Password Rules for Students:</p>
-                <p>&bull; Students can log in using their <strong>Roll Number as the password</strong> (e.g., password = roll number).</p>
+                <p className="font-bold text-slate-300">Password Rules for Students:</p>
+                <p>&bull; Students can log in using their <strong>Roll Number as the password</strong> (e.g. password = roll number).</p>
                 <p>&bull; Or using the default institutional password <code className="text-cyan-400">1234</code> or <code className="text-cyan-400">student123</code>.</p>
-                <p>&bull; Or any custom password set by the admin when adding the student.</p>
+                <p>&bull; Or any custom password set by the admin when adding or importing the student.</p>
               </div>
             </div>
           )}

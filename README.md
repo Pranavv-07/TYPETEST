@@ -1,126 +1,119 @@
-# Institutional Typing Speed Assessment & Examination Engine
-**Department of Computer Science & Engineering**
+# Institutional Examination & Typing Assessment Engine
+**Enterprise University & College Technical Examination Platform**
 
-An institutional-grade typing assessment, proctoring, and certification platform engineered for university departments, programming cohorts, and placement preparation.
+An institutional-grade typing assessment, secure examination proctoring, and automated certification platform engineered for university departments, coding cohorts, and placement evaluation drives. Built for multi-device cross-network administration with centralized PostgreSQL cloud persistence.
 
 ---
 
 ## 🚀 Tech Stack
 
 - **Core Framework**: [React 19](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/)
+- **Database & Cloud Backend**: [Supabase](https://supabase.com/) (PostgreSQL 15+ with Row-Level Security & Realtime triggers)
 - **Build Tooling & Bundler**: [Vite 6](https://vitejs.dev/)
-- **Styling & UI**: [Tailwind CSS v4](https://tailwindcss.com/) with modern dark aesthetic
-- **Icons**: [Lucide React](https://lucide.react)
-- **Animations & Visual Feedback**: [Motion](https://motion.dev/) & [canvas-confetti](https://www.npmjs.com/package/canvas-confetti)
-- **State & Persistence**: React Context API (`AppContext`) with persistent client-side storage (`localStorage`) and pre-seeded institutional datasets
-- **Typing & Proctoring Engine**: Zero-dependency keystroke analyzer with real-time Net WPM, Raw WPM, character error metrics, and anti-cheat event monitors
+- **Styling & Design System**: [Tailwind CSS v4](https://tailwindcss.com/) (Sophisticated institutional dark & slate palette)
+- **Icons**: [Lucide React](https://lucide.dev/)
+- **Animations & Visual FX**: [Motion](https://motion.dev/) & [canvas-confetti](https://www.npmjs.com/package/canvas-confetti)
+- **Typing Engine**: Zero-latency keystroke analyzer with real-time Net WPM, Raw WPM, accuracy precision, and proctoring monitors
+
+---
+
+## ⚡ Quick Start: Database Setup (1 Minute)
+
+To allow candidates and administrators to access tests and accounts from **any device or network** (Vercel, mobile, lab PCs), the centralized PostgreSQL database must be initialized once:
+
+1. Open your [Supabase Dashboard](https://supabase.com/dashboard).
+2. Go to your project (`felqveyqlcmhbdzuaxaf`).
+3. Click on the **SQL Editor** icon in the left navigation bar.
+4. Click **New query**.
+5. Copy and paste the complete database script from:
+   - File in your repository: [`supabase/COMPLETE_INSTITUTIONAL_SETUP.sql`](./supabase/COMPLETE_INSTITUTIONAL_SETUP.sql)
+   - Or public web path: [`/setup.sql`](./public/setup.sql)
+   - Or click **DB Diagnostics > Copy SQL** inside the application's Admin Portal.
+6. Click the green **RUN** button in Supabase.
+7. Once executed, all tables (`students`, `admins`, `trainers`, `tests`, `attempts`, `departments`, `classes`, `batches`, `violations`, `audit_logs`) and policies are active!
 
 ---
 
 ## 🏛️ System Architecture & User Roles
 
 ### 1. 🛡️ Department Administrator (`admin`)
-- **Student Roster Governance**: Full control to view, search, filter, edit details (Roll No, Candidate Name, Class Cohort, Batch, Custom Passwords), or delete student accounts.
-- **Trainer & Proctor Directory**: Create, modify, and manage proctoring staff accounts and classroom permissions.
-- **Institutional Audit Log**: View all submission records across cohorts, with ability to reset single-attempt locks for legitimate re-examinations.
-- **Bulk Data Ingestion**: Intelligent roster parser supporting Excel rows, comma-separated values, tab-delimited records, or PDF tabular text.
+- **Central Student Directory**: Add students individually or ingest hundreds of student records via Excel/CSV paste (Roll Number, Full Name, Classroom).
+- **Cross-Device Persistence**: Student accounts are immediately synchronized to Supabase PostgreSQL, enabling instant login from any student laptop, lab terminal, or phone.
+- **Classrooms & Batches**: Structure departments, graduation batches (e.g. 2024–2028), and section classrooms.
+- **Trainer Governance**: Create and assign faculty proctors to classrooms.
+- **Audit & Security**: Real-time log of all administrative actions, student logins, and test resets.
 
 ### 2. 🎓 Proctor / Trainer Portal
-- **Assessment Management**: Create custom timed typing assessments and coding syntax tests (C, C++, Java, Python, JavaScript, DSA).
-- **Targeting & Deadlines**: Assign tests to specific class cohorts or all candidates with passing thresholds (e.g., minimum accuracy %).
-- **Evaluation & Submissions**: Real-time performance tracking with detailed breakdowns:
-  - Net WPM & Raw WPM
-  - Precision Accuracy % & Character Errors
-  - Time elapsed and submission timestamps
-  - Proctor blur/tab-switch flag count
-- **Class Analytics & Export**: Export roster reports to CSV/print view, view dynamic leaderboards, and issue certified scorecards.
+- **Assessment Management**: Create timed typing assessments and programming syntax tests (C, C++, Java, Python, JavaScript, DSA).
+- **Targeting & Deadlines**: Assign tests to specific class cohorts with minimum qualifying speed and accuracy benchmarks.
+- **Live Proctoring**: Monitor active examinations, live keystroke analytics, and proctoring violation alerts.
+- **Export & Reports**: Download complete cohort performance reports in CSV format.
 
 ### 3. ⌨️ Student Portal
-- **Candidate Assessment Hub**: View pending, assigned, and past assessments filtered by enrolled class cohort.
-- **Typing Arena**: High-performance typing interface with live letter-by-letter visual feedback (correct, typo, pending cursor).
+- **Candidate Hub**: View pending, active, and completed institutional tests assigned to their classroom.
+- **Typing Arena**: High-performance typing interface with live character-level feedback (correct, error, pending cursor).
 - **Anti-Cheat Enforcement**:
-  - Selection and copy/cut/paste prevention.
-  - Right-click context menu blocking.
-  - Tab-switching and window-blur counter logged to the examiner report.
-  - Single-attempt locking for formal trainer assignments.
-- **Digital Certificates**: Dynamically generated certificates of achievement upon meeting qualifying speed and accuracy benchmarks.
+  - Fullscreen lock & focus tracking.
+  - Tab switch & window blur detection.
+  - Cut, copy, and paste blocking.
+  - Right-click context menu prevention.
+  - Single-attempt locking for formal assessments.
+- **Verifiable Certificates**: Dynamic PDF/print certificates awarded upon achieving passing thresholds.
 
 ---
 
-## ⚙️ How the Engine Works
+## 🔑 Login Credentials
 
-### 1. Typing Formula & Metrics
-- **Net WPM (Words Per Minute)**:
-  $$\text{Net WPM} = \max\left(0, \frac{\frac{\text{Correct Characters}}{5} - \text{Uncorrected Errors}}{\text{Elapsed Time (Minutes)}}\right)$$
-- **Raw WPM**:
-  $$\text{Raw WPM} = \frac{\frac{\text{Total Keypresses}}{5}}{\text{Elapsed Time (Minutes)}}$$
-- **Accuracy (%)**:
-  $$\text{Accuracy} = \frac{\text{Correct Keypresses}}{\text{Total Keypresses}} \times 100$$
+### Administrator Portal
+- **Identifier**: `admin`
+- **Password**: `admin123` (or `admin@123`)
 
-### 2. Single-Attempt Integrity
-- When a candidate starts a formal trainer assessment, attempts are tracked by `testId` and `studentId`.
-- Once submitted, the test is marked completed in the student's record and locks further retakes.
-- Only an administrator or proctor can reset the attempt if an official re-sit is authorized.
+### Trainer / Faculty Portal
+- **Identifier**: `trainer1`
+- **Password**: `trainer123` (or `trainer@123`)
 
-### 3. Anti-Cheating & Audit Trail
-- **Blur / Visibility Detection**: Listens to browser `visibilitychange` and window `blur` events. Each tab-switch or window defocus increments a security counter.
-- **Clipboard Guard**: Disallows pasting into the typing buffer, flagging the incident in the candidate's submission record.
+### Student Candidate Login
+- **Identifier**: Student's **Roll Number** (e.g. `24CS001`)
+- **Password**:
+  - The custom password assigned by the Admin when creating the student.
+  - Or the student's own **Roll Number** (case-insensitive default).
+  - Or default institutional PIN: `1234` or `student123`.
 
----
-
-## 🔑 Default Accounts & Credentials
-
-### Administrator Account
-- **Username**: `admin`
-- **Password**: `admin123`
-
-### Trainer / Proctor Accounts
-- **Trainer 1**: `mentor_pranav` (Password: `trainer@123`)
-- **Trainer 2**: `faculty_cse` (Password: `trainer@123`)
-
-### Pre-Enrolled Student Accounts
-The platform comes pre-seeded with the CSE Department cohort. Students log in using their **Roll Number**:
-- **Sample Roll Numbers**:
-  - `24P31A42S4`
-  - `24P31A05B3`
-  - `24B11AI213`
-  - `24P31A05A1`
-  - `24P31A05A2`
-- **Default Student Password**: `1234` *(or custom passwords set via Admin Portal)*
+*Note: All demo candidates have been removed. The database is a clean slate ready for your real institutional student roster.*
 
 ---
 
-## 🌐 Publishing & Account Availability
+## 🌐 Deployment to Vercel
 
-### Do all accounts work when published?
-**Yes!** 
-- All built-in student roll numbers, trainer accounts, and admin credentials are hardcoded into the initial application bundle (`src/data/initialData.ts`).
-- Whenever you publish or share the app, anyone visiting the live URL can immediately log in using any of the pre-seeded student roll numbers, trainer accounts, or admin login.
-- Any modifications made during runtime (e.g. creating new students, editing passwords, submitting test attempts) are saved in the client's browser local storage.
+When deploying to Vercel, ensure the following Environment Variables are configured in your Vercel Project Settings:
+
+| Environment Variable | Description | Value |
+| :--- | :--- | :--- |
+| `VITE_SUPABASE_URL` | Supabase Project REST Endpoint | `https://felqveyqlcmhbdzuaxaf.supabase.co` |
+| `VITE_SUPABASE_ANON_KEY` | Supabase Anonymous Public Key | *Your Anon Public Key* |
+
+*(The application also includes these as pre-configured fallbacks in code so the connection works immediately).*
 
 ---
 
-## 🛠️ Development & Build Commands
+## 🛠️ Local Development
 
 ```bash
-# Install dependencies
+# 1. Install dependencies
 npm install
 
-# Start local development server (port 3000)
+# 2. Start development server (port 3000)
 npm run dev
 
-# Run TypeScript type checks
+# 3. Type check & lint
 npm run lint
 
-# Build production bundle
+# 4. Build production bundle
 npm run build
-
-# Preview production build
-npm run preview
 ```
 
 ---
 
-## 📄 License & Copyright
+## 📄 License & Institutional Usage
 
-© 2026 Pranav Vedula | Dept. of CSE. All rights reserved.
+Designed and built for University Department Examination Cells & Placement Assessment Drives. All rights reserved.

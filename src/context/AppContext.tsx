@@ -420,6 +420,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const bulkAddStudents = async (newStudentsData: Omit<Student, 'id' | 'createdAt'>[]): Promise<number> => {
     const res = await bulkImportStudents(newStudentsData);
+    if (res.valid === 0 && res.errors.length > 0) {
+      throw new Error(res.errors[0]);
+    }
     const reloaded = await fetchStudents();
     setStudents(reloaded);
     recordAuditLog({

@@ -1,7 +1,10 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const defaultSupabaseUrl = 'https://felqveyqlcmhbdzuaxaf.supabase.co';
+const defaultSupabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZlbHF2ZXlxbGNtaGJkenVheGFmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0OTYxNTYsImV4cCI6MjEwNDA3MjE1Nn0.XGKLX5q-foaQJbnIKHbPYdUFmiEQuRGATdNIDHCjYsI';
+
+export const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || defaultSupabaseUrl).trim();
+export const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || defaultSupabaseAnonKey).trim();
 
 // Validate whether a real, non-placeholder Supabase URL and key are supplied
 export const isSupabaseConfigured = (): boolean => {

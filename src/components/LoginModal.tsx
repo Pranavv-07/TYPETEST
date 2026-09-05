@@ -78,7 +78,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onSucce
               required
               value={identifier}
               onChange={e => setIdentifier(e.target.value)}
-              placeholder="e.g. 24P31A42S4 or trainer or admin"
+              placeholder="e.g. Roll Number, trainer, or admin"
               autoComplete="username"
               className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 font-mono placeholder-slate-500 focus:outline-none focus:border-cyan-500/60"
             />

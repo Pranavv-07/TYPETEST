@@ -128,7 +128,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess, onContinueAsGue
                   <User className="w-3.5 h-3.5 text-cyan-400" />
                   <span>Roll Number or Username</span>
                 </span>
-                <span className="text-[10px] text-slate-500 font-mono">e.g. 24P31A42S4 or admin</span>
+                <span className="text-[10px] text-slate-500 font-mono">e.g. Roll No or admin</span>
               </label>
               <input
                 type="text"

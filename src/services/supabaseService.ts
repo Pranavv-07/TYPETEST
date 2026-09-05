@@ -1,4 +1,4 @@
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
 import {
   Student,
   Trainer,
@@ -136,11 +136,21 @@ export async function authenticateWithDatabase(
       }
 
       // 3. Check Student (Roll Number or Email or Username)
-      const { data: studentData } = await supabase
+      const { data: studentData, error: studentQueryError } = await supabase
         .from('students')
         .select('*')
         .or(`roll_number.ilike.${trimmedId},email.ilike.${trimmedId},username.ilike.${trimmedId}`)
         .maybeSingle();
+
+      if (studentQueryError) {
+        console.warn('Supabase student query error:', studentQueryError);
+        if (studentQueryError.code === 'PGRST205' || studentQueryError.message?.includes('Could not find the table')) {
+          return {
+            success: false,
+            message: 'Database initialization required: The "students" table has not been created in Supabase yet. Please run the setup SQL script in your Supabase SQL Editor.'
+          };
+        }
+      }
 
       if (studentData) {
         if (studentData.status !== 'active') {
@@ -805,7 +815,6 @@ export async function createStudent(studentData: Omit<Student, 'id' | 'createdAt
     id: `std-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
     createdAt: new Date().toISOString()
   };
-  memoryStudents.push(newStudent);
 
   if (isSupabaseConfigured()) {
     try {
@@ -821,8 +830,20 @@ export async function createStudent(studentData: Omit<Student, 'id' | 'createdAt
         username: studentData.rollNo.toUpperCase().trim(),
         status: studentData.status || 'active'
       }]).select().single();
-      if (!error && data) {
-        return {
+
+      if (error) {
+        console.error('Supabase student insert error:', error);
+        if (error.code === 'PGRST205' || error.message?.includes('Could not find the table')) {
+          throw new Error('Database tables are missing in Supabase. Please execute the setup SQL script in your Supabase SQL Editor before creating student accounts.');
+        }
+        if (error.code === '23505' || error.message?.includes('duplicate key') || error.message?.includes('unique constraint')) {
+          throw new Error(`A student with Roll Number "${studentData.rollNo.toUpperCase().trim()}" already exists.`);
+        }
+        throw new Error(error.message || 'Database error occurred while adding student.');
+      }
+
+      if (data) {
+        const persisted: Student = {
           id: data.id,
           rollNo: data.roll_number,
           name: data.name,
@@ -835,11 +856,16 @@ export async function createStudent(studentData: Omit<Student, 'id' | 'createdAt
           status: data.status,
           createdAt: data.created_at
         };
+        memoryStudents.push(persisted);
+        return persisted;
       }
     } catch (e) {
       console.error('Supabase student insert error:', e);
+      throw e;
     }
   }
+
+  memoryStudents.push(newStudent);
   return newStudent;
 }
 
@@ -952,8 +978,16 @@ export async function bulkImportStudents(
 
   // Insert valid
   for (const item of validToInsert) {
-    await createStudent(item);
-    result.valid++;
+    try {
+      await createStudent(item);
+      result.valid++;
+    } catch (err: any) {
+      result.invalid++;
+      result.errors.push(`${item.rollNo}: ${err.message || 'Insert failed'}`);
+      if (err.message?.includes('Database tables are missing')) {
+        break;
+      }
+    }
   }
 
   return result;
@@ -1547,8 +1581,8 @@ export interface DatabaseConnectionStatus {
 
 export async function checkDatabaseConnection(): Promise<DatabaseConnectionStatus> {
   const isConf = isSupabaseConfigured();
-  const rawUrl = import.meta.env.VITE_SUPABASE_URL || '';
-  const rawKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+  const rawUrl = supabaseUrl || import.meta.env.VITE_SUPABASE_URL || '';
+  const rawKey = supabaseAnonKey || import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
   const masked = rawUrl
     ? rawUrl.replace(/(https:\/\/[a-z0-9]{4})[a-z0-9]+(\.supabase\.co)/i, '$1••••$2')
@@ -1593,6 +1627,10 @@ export async function checkDatabaseConnection(): Promise<DatabaseConnectionStatu
       status.counts.students = studentCount || 0;
       status.isConnected = true;
     } else {
+      // If server returned table missing error, server is alive!
+      if (studentErr.code === 'PGRST205' || studentErr.message?.includes('Could not find the table') || studentErr.message?.includes('schema cache')) {
+        status.isConnected = true;
+      }
       status.errorMessage = studentErr.message;
     }
 
@@ -1600,9 +1638,12 @@ export async function checkDatabaseConnection(): Promise<DatabaseConnectionStatu
     const { count: adminCount, error: adminErr } = await supabase
       .from('admins')
       .select('*', { count: 'exact', head: true });
+
     if (!adminErr) {
       status.tablesFound.admins = true;
       status.counts.admins = adminCount || 0;
+      status.isConnected = true;
+    } else if (adminErr.code === 'PGRST205' || adminErr.message?.includes('Could not find the table')) {
       status.isConnected = true;
     }
 
@@ -1640,8 +1681,9 @@ export async function checkDatabaseConnection(): Promise<DatabaseConnectionStatu
       status.tablesFound.departments = true;
     }
 
-    if (status.isConnected && !status.tablesFound.students) {
-      status.recommendedAction = 'Tables missing in Supabase. Run the COMPLETE_INSTITUTIONAL_SETUP.sql script in Supabase SQL Editor.';
+    if (status.isConnected && (!status.tablesFound.students || !status.tablesFound.admins)) {
+      status.errorMessage = 'Supabase server reached, but database tables (students, admins, classes, etc.) have not been created yet.';
+      status.recommendedAction = 'Open your Supabase project SQL Editor, paste COMPLETE_INSTITUTIONAL_SETUP.sql, and click RUN.';
     }
   } catch (err: any) {
     status.errorMessage = err.message || 'Failed to ping Supabase instance.';

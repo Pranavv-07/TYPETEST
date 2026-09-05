@@ -1227,7 +1227,7 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
                   rows={3}
                   value={manualRosterInput}
                   onChange={e => setManualRosterInput(e.target.value)}
-                  placeholder="24P31A42S4&#10;24B11CS355"
+                  placeholder="24CS001, John Doe&#10;24CS002, Jane Smith"
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-slate-100 font-mono text-xs focus:outline-none"
                 />
               </div>
