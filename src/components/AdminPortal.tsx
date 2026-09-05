@@ -33,8 +33,10 @@ import {
   Flame,
   Clock
 } from 'lucide-react';
+import { DatabaseDiagnosticModal } from './DatabaseDiagnosticModal';
 
 export const AdminPortal: React.FC = () => {
+  const [showDbDiagModal, setShowDbDiagModal] = useState(false);
   const {
     departments,
     batches,
@@ -361,6 +363,14 @@ export const AdminPortal: React.FC = () => {
           >
             <Activity className="w-3.5 h-3.5 text-cyan-400" />
             <span>Sync DB</span>
+          </button>
+
+          <button
+            onClick={() => setShowDbDiagModal(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs border border-slate-700 transition-colors"
+          >
+            <Database className="w-3.5 h-3.5 text-emerald-400" />
+            <span>DB Diagnostics</span>
           </button>
 
           <button
@@ -1347,6 +1357,9 @@ export const AdminPortal: React.FC = () => {
                   onChange={e => setNewStudentPassword(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 mt-1"
                 />
+                <p className="text-[10px] text-slate-500 mt-1 font-mono">
+                  Default allowed passwords: Roll Number, 1234, or student123
+                </p>
               </div>
               <button
                 type="submit"
@@ -1520,6 +1533,12 @@ export const AdminPortal: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* DATABASE DIAGNOSTIC MODAL */}
+      <DatabaseDiagnosticModal
+        isOpen={showDbDiagModal}
+        onClose={() => setShowDbDiagModal(false)}
+      />
     </div>
   );
 };

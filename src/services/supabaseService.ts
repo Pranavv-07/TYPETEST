@@ -100,7 +100,7 @@ export async function authenticateWithDatabase(
         .eq('status', 'active')
         .maybeSingle();
 
-      if (adminData && (trimmedPass === 'admin123' || trimmedPass === 'admin@123' || adminData.password_hash)) {
+      if (adminData && (trimmedPass === 'admin123' || trimmedPass === 'admin@123' || (adminData.password_hash && trimmedPass === adminData.password_hash))) {
         return {
           success: true,
           user: {
@@ -122,7 +122,7 @@ export async function authenticateWithDatabase(
         .eq('status', 'active')
         .maybeSingle();
 
-      if (trainerData && (trimmedPass === 'trainer@123' || trimmedPass === 'proctor@123' || trainerData.password_hash)) {
+      if (trainerData && (trimmedPass === 'trainer123' || trimmedPass === 'trainer@123' || trimmedPass === 'proctor123' || trimmedPass === 'proctor@123' || (trainerData.password_hash && trimmedPass === trainerData.password_hash))) {
         return {
           success: true,
           user: {
@@ -135,18 +135,33 @@ export async function authenticateWithDatabase(
         };
       }
 
-      // 3. Check Student (Roll Number or Email)
+      // 3. Check Student (Roll Number or Email or Username)
       const { data: studentData } = await supabase
         .from('students')
         .select('*')
-        .or(`roll_number.ilike.${trimmedId},email.ilike.${trimmedId}`)
+        .or(`roll_number.ilike.${trimmedId},email.ilike.${trimmedId},username.ilike.${trimmedId}`)
         .maybeSingle();
 
       if (studentData) {
         if (studentData.status !== 'active') {
           return { success: false, message: `Your student account is currently ${studentData.status}. Please contact the Department Examination Cell.` };
         }
-        if (trimmedPass === '1234' || trimmedPass === (studentData.password_hash || '1234')) {
+
+        // Student password matches if:
+        // 1. Matches stored password_hash
+        // 2. Student enters their own roll number as the password (case-insensitive)
+        // 3. Student enters default institutional passwords ('1234', 'student123', 'student@123')
+        // 4. No password was configured on the account
+        const isStudentPasswordValid =
+          (studentData.password_hash && trimmedPass === studentData.password_hash) ||
+          trimmedPass.toLowerCase() === studentData.roll_number.toLowerCase() ||
+          trimmedPass.toLowerCase() === trimmedId.toLowerCase() ||
+          trimmedPass === '1234' ||
+          trimmedPass === 'student123' ||
+          trimmedPass === 'student@123' ||
+          !studentData.password_hash;
+
+        if (isStudentPasswordValid) {
           return {
             success: true,
             user: {
@@ -188,47 +203,68 @@ export async function authenticateWithDatabase(
       t.username.toLowerCase() === trimmedId.toLowerCase() ||
       t.email.toLowerCase() === trimmedId.toLowerCase()
   );
-  if (matchedTrainer && (trimmedPass === (matchedTrainer.password || 'trainer@123') || trimmedPass === 'trainer@123' || trimmedPass === 'proctor@123')) {
-    if (matchedTrainer.status === 'inactive' || matchedTrainer.status === 'suspended') {
-      return { success: false, message: 'Your trainer account is currently inactive or suspended.' };
-    }
-    return {
-      success: true,
-      user: {
-        id: matchedTrainer.id,
-        username: matchedTrainer.username,
-        name: matchedTrainer.name,
-        email: matchedTrainer.email,
-        role: 'trainer'
+  if (matchedTrainer) {
+    const isTrainerPassValid =
+      trimmedPass === (matchedTrainer.password || 'trainer@123') ||
+      trimmedPass === 'trainer123' ||
+      trimmedPass === 'trainer@123' ||
+      trimmedPass === 'proctor123' ||
+      trimmedPass === 'proctor@123';
+
+    if (isTrainerPassValid) {
+      if (matchedTrainer.status === 'inactive' || matchedTrainer.status === 'suspended') {
+        return { success: false, message: 'Your trainer account is currently inactive or suspended.' };
       }
-    };
+      return {
+        success: true,
+        user: {
+          id: matchedTrainer.id,
+          username: matchedTrainer.username,
+          name: matchedTrainer.name,
+          email: matchedTrainer.email,
+          role: 'trainer'
+        }
+      };
+    }
   }
 
   // Student check
   const matchedStudent = memoryStudents.find(
     s =>
       s.rollNo.toUpperCase() === trimmedId.toUpperCase() ||
-      (s.email && s.email.toLowerCase() === trimmedId.toLowerCase())
+      (s.email && s.email.toLowerCase() === trimmedId.toLowerCase()) ||
+      (s.username && s.username.toLowerCase() === trimmedId.toLowerCase())
   );
-  if (matchedStudent && (trimmedPass === (matchedStudent.password || '1234') || trimmedPass === '1234')) {
-    if (matchedStudent.status === 'inactive' || matchedStudent.status === 'suspended') {
-      return { success: false, message: `Your student account is currently ${matchedStudent.status}. Please contact the Department Examination Cell.` };
-    }
-    return {
-      success: true,
-      user: {
-        id: matchedStudent.id,
-        username: matchedStudent.rollNo,
-        name: matchedStudent.name,
-        rollNo: matchedStudent.rollNo,
-        email: matchedStudent.email,
-        classId: matchedStudent.classId,
-        role: 'student'
+  if (matchedStudent) {
+    const isPassValid =
+      (matchedStudent.password && trimmedPass === matchedStudent.password) ||
+      trimmedPass.toLowerCase() === matchedStudent.rollNo.toLowerCase() ||
+      trimmedPass.toLowerCase() === trimmedId.toLowerCase() ||
+      trimmedPass === '1234' ||
+      trimmedPass === 'student123' ||
+      trimmedPass === 'student@123' ||
+      !matchedStudent.password;
+
+    if (isPassValid) {
+      if (matchedStudent.status === 'inactive' || matchedStudent.status === 'suspended') {
+        return { success: false, message: `Your student account is currently ${matchedStudent.status}. Please contact the Department Examination Cell.` };
       }
-    };
+      return {
+        success: true,
+        user: {
+          id: matchedStudent.id,
+          username: matchedStudent.rollNo,
+          name: matchedStudent.name,
+          rollNo: matchedStudent.rollNo,
+          email: matchedStudent.email,
+          classId: matchedStudent.classId,
+          role: 'student'
+        }
+      };
+    }
   }
 
-  return { success: false, message: 'Invalid credentials. Please verify your username, roll number, and password.' };
+  return { success: false, message: 'Invalid credentials. Please verify your roll number/username and password.' };
 }
 
 // ============================================================================
@@ -744,6 +780,7 @@ export async function fetchStudents(): Promise<Student[]> {
           name: s.name,
           email: s.email,
           phone: s.phone,
+          password: s.password_hash || s.roll_number,
           classId: s.class_id,
           batchId: s.batch_id,
           departmentId: s.department_id,
@@ -761,8 +798,10 @@ export async function fetchStudents(): Promise<Student[]> {
 }
 
 export async function createStudent(studentData: Omit<Student, 'id' | 'createdAt'>): Promise<Student> {
+  const defaultPassword = studentData.password?.trim() || studentData.rollNo.toUpperCase().trim();
   const newStudent: Student = {
     ...studentData,
+    password: defaultPassword,
     id: `std-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
     createdAt: new Date().toISOString()
   };
@@ -778,6 +817,8 @@ export async function createStudent(studentData: Omit<Student, 'id' | 'createdAt
         class_id: studentData.classId || null,
         batch_id: studentData.batchId || null,
         department_id: studentData.departmentId || null,
+        password_hash: defaultPassword,
+        username: studentData.rollNo.toUpperCase().trim(),
         status: studentData.status || 'active'
       }]).select().single();
       if (!error && data) {
@@ -787,6 +828,7 @@ export async function createStudent(studentData: Omit<Student, 'id' | 'createdAt
           name: data.name,
           email: data.email,
           phone: data.phone,
+          password: data.password_hash || defaultPassword,
           classId: data.class_id,
           batchId: data.batch_id,
           departmentId: data.department_id,
@@ -805,7 +847,7 @@ export async function updateStudent(id: string, updates: Partial<Student>): Prom
   memoryStudents = memoryStudents.map(s => s.id === id ? { ...s, ...updates } : s);
   if (isSupabaseConfigured()) {
     try {
-      await supabase.from('students').update({
+      const dbUpdates: any = {
         ...(updates.rollNo && { roll_number: updates.rollNo.toUpperCase().trim() }),
         ...(updates.name && { name: updates.name.trim() }),
         ...(updates.email !== undefined && { email: updates.email?.trim() || null }),
@@ -815,7 +857,11 @@ export async function updateStudent(id: string, updates: Partial<Student>): Prom
         ...(updates.departmentId !== undefined && { department_id: updates.departmentId || null }),
         ...(updates.status && { status: updates.status }),
         updated_at: new Date().toISOString()
-      }).eq('id', id);
+      };
+      if (updates.password !== undefined && updates.password.trim()) {
+        dbUpdates.password_hash = updates.password.trim();
+      }
+      await supabase.from('students').update(dbUpdates).eq('id', id);
     } catch (e) {
       console.error(e);
     }
@@ -930,6 +976,7 @@ export async function fetchTrainers(): Promise<Trainer[]> {
           name: t.name,
           email: t.email,
           phone: t.phone,
+          password: t.password_hash || 'trainer@123',
           employeeId: t.employee_id,
           departmentId: t.department_id,
           designation: t.designation,
@@ -946,8 +993,10 @@ export async function fetchTrainers(): Promise<Trainer[]> {
 }
 
 export async function createTrainer(trainerData: Omit<Trainer, 'id' | 'createdAt'>): Promise<Trainer> {
+  const defaultPassword = trainerData.password?.trim() || 'trainer@123';
   const newTrainer: Trainer = {
     ...trainerData,
+    password: defaultPassword,
     id: `trn-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
     createdAt: new Date().toISOString()
   };
@@ -963,6 +1012,7 @@ export async function createTrainer(trainerData: Omit<Trainer, 'id' | 'createdAt
         employee_id: trainerData.employeeId || null,
         department_id: trainerData.departmentId || null,
         designation: trainerData.designation || 'Examiner',
+        password_hash: defaultPassword,
         status: trainerData.status || 'active'
       }]).select().single();
       if (!error && data) {
@@ -980,6 +1030,7 @@ export async function createTrainer(trainerData: Omit<Trainer, 'id' | 'createdAt
           name: data.name,
           email: data.email,
           phone: data.phone,
+          password: data.password_hash || defaultPassword,
           employeeId: data.employee_id,
           departmentId: data.department_id,
           designation: data.designation,
@@ -999,14 +1050,18 @@ export async function updateTrainer(id: string, updates: Partial<Trainer>): Prom
   memoryTrainers = memoryTrainers.map(t => t.id === id ? { ...t, ...updates } : t);
   if (isSupabaseConfigured()) {
     try {
-      await supabase.from('trainers').update({
+      const dbUpdates: any = {
         ...(updates.name && { name: updates.name }),
         ...(updates.email && { email: updates.email }),
         ...(updates.phone !== undefined && { phone: updates.phone }),
         ...(updates.designation !== undefined && { designation: updates.designation }),
         ...(updates.status && { status: updates.status }),
         updated_at: new Date().toISOString()
-      }).eq('id', id);
+      };
+      if (updates.password !== undefined && updates.password.trim()) {
+        dbUpdates.password_hash = updates.password.trim();
+      }
+      await supabase.from('trainers').update(dbUpdates).eq('id', id);
 
       if (updates.assignedClasses) {
         await supabase.from('trainer_classes').delete().eq('trainer_id', id);
@@ -1460,4 +1515,138 @@ export async function createAdminUser(admin: Omit<AdminUser, 'id' | 'createdAt'>
     }
   }
   return newAdmin;
+}
+
+// ============================================================================
+// 12. DIAGNOSTICS & SYSTEM HEALTH VERIFICATION
+// ============================================================================
+
+export interface DatabaseConnectionStatus {
+  isConfigured: boolean;
+  supabaseUrl: string;
+  maskedUrl: string;
+  hasAnonKey: boolean;
+  isConnected: boolean;
+  tablesFound: {
+    students: boolean;
+    admins: boolean;
+    tests: boolean;
+    attempts: boolean;
+    classes: boolean;
+    departments: boolean;
+  };
+  counts: {
+    students: number;
+    admins: number;
+    tests: number;
+    classes: number;
+  };
+  errorMessage?: string;
+  recommendedAction?: string;
+}
+
+export async function checkDatabaseConnection(): Promise<DatabaseConnectionStatus> {
+  const isConf = isSupabaseConfigured();
+  const rawUrl = import.meta.env.VITE_SUPABASE_URL || '';
+  const rawKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+
+  const masked = rawUrl
+    ? rawUrl.replace(/(https:\/\/[a-z0-9]{4})[a-z0-9]+(\.supabase\.co)/i, '$1••••$2')
+    : 'Not configured';
+
+  const status: DatabaseConnectionStatus = {
+    isConfigured: isConf,
+    supabaseUrl: rawUrl,
+    maskedUrl: masked,
+    hasAnonKey: Boolean(rawKey && rawKey.length > 20),
+    isConnected: false,
+    tablesFound: {
+      students: false,
+      admins: false,
+      tests: false,
+      attempts: false,
+      classes: false,
+      departments: false
+    },
+    counts: {
+      students: 0,
+      admins: 0,
+      tests: 0,
+      classes: 0
+    }
+  };
+
+  if (!isConf) {
+    status.errorMessage = 'VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are not configured in Vercel environment variables.';
+    status.recommendedAction = 'Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel Project Settings > Environment Variables, then redeploy.';
+    return status;
+  }
+
+  try {
+    // Ping students
+    const { count: studentCount, error: studentErr } = await supabase
+      .from('students')
+      .select('*', { count: 'exact', head: true });
+
+    if (!studentErr) {
+      status.tablesFound.students = true;
+      status.counts.students = studentCount || 0;
+      status.isConnected = true;
+    } else {
+      status.errorMessage = studentErr.message;
+    }
+
+    // Ping admins
+    const { count: adminCount, error: adminErr } = await supabase
+      .from('admins')
+      .select('*', { count: 'exact', head: true });
+    if (!adminErr) {
+      status.tablesFound.admins = true;
+      status.counts.admins = adminCount || 0;
+      status.isConnected = true;
+    }
+
+    // Ping tests
+    const { count: testCount, error: testErr } = await supabase
+      .from('tests')
+      .select('*', { count: 'exact', head: true });
+    if (!testErr) {
+      status.tablesFound.tests = true;
+      status.counts.tests = testCount || 0;
+    }
+
+    // Ping classes
+    const { count: classCount, error: classErr } = await supabase
+      .from('classes')
+      .select('*', { count: 'exact', head: true });
+    if (!classErr) {
+      status.tablesFound.classes = true;
+      status.counts.classes = classCount || 0;
+    }
+
+    // Ping attempts
+    const { error: attemptErr } = await supabase
+      .from('attempts')
+      .select('id', { count: 'exact', head: true });
+    if (!attemptErr) {
+      status.tablesFound.attempts = true;
+    }
+
+    // Ping departments
+    const { error: deptErr } = await supabase
+      .from('departments')
+      .select('id', { count: 'exact', head: true });
+    if (!deptErr) {
+      status.tablesFound.departments = true;
+    }
+
+    if (status.isConnected && !status.tablesFound.students) {
+      status.recommendedAction = 'Tables missing in Supabase. Run the COMPLETE_INSTITUTIONAL_SETUP.sql script in Supabase SQL Editor.';
+    }
+  } catch (err: any) {
+    status.errorMessage = err.message || 'Failed to ping Supabase instance.';
+    status.recommendedAction = 'Verify your Vercel environment variables and ensure your Supabase project is active.';
+  }
+
+  return status;
 }

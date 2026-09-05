@@ -17,19 +17,21 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onSucce
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setIsSubmitting(true);
 
     try {
-      const res = login(identifier, password);
-      if (res.success) {
+      const res = await login(identifier, password);
+      if (res && res.success) {
         if (onSuccess) onSuccess();
         onClose();
       } else {
-        setErrorMsg(res.message || 'Invalid credentials. Please verify your username, roll number, and password.');
+        setErrorMsg(res?.message || 'Invalid credentials. Please verify your roll number, username, and password.');
       }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Authentication error. Please verify your connection.');
     } finally {
       setIsSubmitting(false);
     }
