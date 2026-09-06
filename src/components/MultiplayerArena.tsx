@@ -19,6 +19,8 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
   
   const [players, setPlayers] = useState<Record<string, PlayerState>>({});
   const [roomState, setRoomState] = useState<'joining' | 'waiting' | 'countdown' | 'racing' | 'finished'>('joining');
+  const [roomCode, setRoomCode] = useState<string>('');
+  const [joinCodeInput, setJoinCodeInput] = useState<string>('');
   const [countdown, setCountdown] = useState(5);
   
   const channelRef = useRef<RealtimeChannel | null>(null);
@@ -36,7 +38,7 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || !roomCode) return;
     
     const myId = currentUser.id;
     const initialPlayerState: PlayerState = {
@@ -47,7 +49,7 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
       status: 'waiting'
     };
 
-    const channel = supabase.channel('multiplayer-lobby', {
+    const channel = supabase.channel(`multiplayer-lobby-${roomCode}`, {
       config: {
         presence: { key: myId },
       },
@@ -80,7 +82,7 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
     return () => {
       channel.unsubscribe();
     };
-  }, [currentUser]);
+  }, [currentUser, roomCode]);
 
   // Countdown logic
   useEffect(() => {
@@ -170,6 +172,74 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
 
   const sortedPlayers = (Object.values(players) as PlayerState[]).sort((a, b) => b.progress - a.progress);
 
+  if (roomState === 'joining') {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-12 space-y-8">
+        <div className="flex items-center gap-4 mb-8">
+          <button onClick={onExit} className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition-colors">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-black text-slate-100 flex items-center gap-2">
+              <Swords className="w-6 h-6 text-amber-500" />
+              Multiplayer Arena
+            </h1>
+            <p className="text-sm text-slate-400">Join or create a private typing race</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-6 flex flex-col items-center justify-center text-center">
+            <div className="w-16 h-16 rounded-full bg-amber-500/20 border border-amber-500/50 flex items-center justify-center text-amber-500 mb-2">
+              <Zap className="w-8 h-8" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-slate-200">Create New Race</h2>
+              <p className="text-xs text-slate-400 mt-2">Generate a unique room code and invite others to race against you.</p>
+            </div>
+            <button
+              onClick={() => {
+                const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+                setRoomCode(code);
+                setRoomState('waiting');
+              }}
+              className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold transition-all shadow-lg shadow-amber-500/20"
+            >
+              Create Room
+            </button>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-6 flex flex-col items-center justify-center text-center">
+            <div className="w-16 h-16 rounded-full bg-cyan-500/20 border border-cyan-500/50 flex items-center justify-center text-cyan-500 mb-2">
+              <Users className="w-8 h-8" />
+            </div>
+            <div className="w-full">
+              <h2 className="text-xl font-bold text-slate-200 mb-4">Join Race</h2>
+              <input
+                type="text"
+                placeholder="Enter 6-letter code"
+                value={joinCodeInput}
+                onChange={e => setJoinCodeInput(e.target.value.toUpperCase())}
+                maxLength={6}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-center text-xl text-slate-100 font-mono font-bold tracking-widest focus:outline-none focus:border-cyan-500/60"
+              />
+            </div>
+            <button
+              disabled={joinCodeInput.length < 6}
+              onClick={() => {
+                setRoomCode(joinCodeInput);
+                setRoomState('waiting');
+              }}
+              className="w-full py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 disabled:hover:bg-cyan-500 text-slate-950 font-bold transition-all shadow-lg shadow-cyan-500/20"
+            >
+              Join Room
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-8">
       <div className="flex items-center justify-between bg-slate-900 border border-amber-500/30 rounded-2xl p-6 shadow-xl shadow-amber-900/10">
@@ -182,7 +252,12 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
               <Swords className="w-6 h-6 text-amber-500" />
               Multiplayer Arena
             </h1>
-            <p className="text-sm text-slate-400">Race against other candidates in real-time</p>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-sm text-slate-400">Room Code:</span>
+              <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono font-bold tracking-widest text-xs">
+                {roomCode}
+              </span>
+            </div>
           </div>
         </div>
         

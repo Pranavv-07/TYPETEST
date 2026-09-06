@@ -12,10 +12,7 @@ import {
   Sparkles,
   LayoutDashboard,
   PlaySquare,
-  Database
 } from 'lucide-react';
-import { DatabaseDiagnosticModal } from './DatabaseDiagnosticModal';
-import { isSupabaseConfigured } from '../lib/supabase';
 
 interface NavbarProps {
   currentView: 'arena' | 'trainer' | 'student' | 'admin' | 'login';
@@ -29,8 +26,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenLoginModal
 }) => {
   const { currentUser, soundEnabled, setSoundEnabled, logout } = useApp();
-  const [isDbModalOpen, setIsDbModalOpen] = useState(false);
-  const isDbConfigured = isSupabaseConfigured();
 
   const handleLogout = () => {
     logout();
@@ -131,19 +126,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Right side controls */}
         <div className="flex items-center gap-2.5">
-          {/* Database Diagnostics */}
-          <button
-            onClick={() => setIsDbModalOpen(true)}
-            title={isDbConfigured ? 'Supabase Database Connected' : 'Database Setup Needed (Click to Configure)'}
-            className={`p-2 rounded-lg text-xs transition-colors border flex items-center gap-1.5 ${
-              isDbConfigured
-                ? 'bg-slate-900 text-emerald-400 border-slate-800 hover:bg-slate-800'
-                : 'bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20 animate-pulse'
-            }`}
-          >
-            <Database className="w-4 h-4" />
-          </button>
-
           {/* Audio toggle */}
           <button
             onClick={() => setSoundEnabled(!soundEnabled)}
@@ -200,12 +182,6 @@ export const Navbar: React.FC<NavbarProps> = ({
           )}
         </div>
       </div>
-
-      {/* Database Diagnostic & Connection Modal */}
-      <DatabaseDiagnosticModal
-        isOpen={isDbModalOpen}
-        onClose={() => setIsDbModalOpen(false)}
-      />
     </header>
   );
 };
