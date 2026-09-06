@@ -536,7 +536,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     attemptId: string,
     submissionData: Omit<TypingSubmission, 'id' | 'timestamp'>
   ) => {
-    const res = await submitTestAttemptAtomic(attemptId, submissionData);
+    let finalAttemptId = attemptId;
+    if (!finalAttemptId && currentUser) {
+      try {
+        const { getOrCreatePracticeTest } = await import('../services/supabaseService');
+        const pId = await getOrCreatePracticeTest(submissionData.testCategory || 'standard');
+        const startRes = await startTestAttemptAtomic(pId, currentUser.id);
+        if (startRes.attempt) {
+          finalAttemptId = startRes.attempt.id;
+        }
+      } catch (err) {
+        console.error('Failed to create practice attempt', err);
+      }
+    }
+    const res = await submitTestAttemptAtomic(finalAttemptId, submissionData);
     if (res.submission) {
       setSubmissions(prev => [res.submission!, ...prev]);
     }
@@ -549,15 +562,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const recordSubmission = async (
     submissionData: Omit<TypingSubmission, 'id' | 'timestamp'>
   ): Promise<TypingSubmission | null> => {
-    const res = await submitTestAttemptAtomic('', submissionData);
-    if (res.submission) {
-      setSubmissions(prev => [res.submission!, ...prev]);
-      if (res.certificate) {
-        setCertificates(prev => [res.certificate!, ...prev]);
-      }
-      return res.submission;
-    }
-    return null;
+    const res = await submitAttempt('', submissionData);
+    return res.submission || null;
   };
 
   const resetStudentAttempt = async (testId: string, studentId: string, reason: string = 'Authorized re-examination') => {

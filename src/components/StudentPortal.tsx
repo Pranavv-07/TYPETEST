@@ -1,8 +1,11 @@
+import { useServerTime } from "../hooks/useServerTime";
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { TypingTest, StudentCertificate } from '../types';
 import { CertificateModal } from './CertificateModal';
 import { LeaderboardModal } from './LeaderboardModal';
+import { StudentDashboard } from './StudentDashboard';
+import { StudentLeaderboard } from './StudentLeaderboard';
 import {
   GraduationCap,
   Play,
@@ -20,20 +23,25 @@ import {
   Download,
   Calendar,
   Sparkles,
-  Check
+  Check,
+  LayoutDashboard,
+  Swords,
+  User
 } from 'lucide-react';
 
 interface StudentPortalProps {
   onStartAssessment: (test: TypingTest) => void;
   onOpenPractice: () => void;
+  onOpenMultiplayer?: () => void;
 }
 
 export const StudentPortal: React.FC<StudentPortalProps> = ({
   onStartAssessment,
-  onOpenPractice
+  onOpenPractice,
+  onOpenMultiplayer
 }) => {
   const { currentUser, classes, tests, submissions, certificates } = useApp();
-  const [activeTab, setActiveTab] = useState<'assigned' | 'history' | 'certificates'>('assigned');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'assigned' | 'leaderboard' | 'history' | 'certificates'>('dashboard');
   const [selectedCertificate, setSelectedCertificate] = useState<StudentCertificate | null>(null);
   const [selectedLeaderboardTest, setSelectedLeaderboardTest] = useState<TypingTest | null>(null);
 
@@ -41,7 +49,8 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
   const studentClass = classes.find(c => c.id === currentUser?.classId) || classes[0];
 
   // Current time for availability checking
-  const now = new Date();
+  const getServerDate = useServerTime();
+  const now = getServerDate();
 
   // Filter assigned tests:
   // 1. Must be assigned to this student specifically OR their enrolled class
@@ -165,7 +174,19 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
       </div>
 
       {/* Tabs */}
+      {/* Tabs */}
       <div className="flex border-b border-slate-800 gap-6 text-sm font-semibold overflow-x-auto">
+        <button
+          onClick={() => setActiveTab('dashboard')}
+          className={`pb-3 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all ${
+            activeTab === 'dashboard'
+              ? 'border-cyan-400 text-cyan-400'
+              : 'border-transparent text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <LayoutDashboard className="w-4 h-4" />
+          <span>Dashboard</span>
+        </button>
         <button
           onClick={() => setActiveTab('assigned')}
           className={`pb-3 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all ${
@@ -175,9 +196,19 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
           }`}
         >
           <Code2 className="w-4 h-4" />
-          <span>Assigned Assessments ({visibleAssignedTests.length})</span>
+          <span>Assigned ({visibleAssignedTests.length})</span>
         </button>
-
+        <button
+          onClick={() => setActiveTab('leaderboard')}
+          className={`pb-3 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all ${
+            activeTab === 'leaderboard'
+              ? 'border-cyan-400 text-cyan-400'
+              : 'border-transparent text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Trophy className="w-4 h-4" />
+          <span>Leaderboard</span>
+        </button>
         <button
           onClick={() => setActiveTab('history')}
           className={`pb-3 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all ${
@@ -187,9 +218,8 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
           }`}
         >
           <Target className="w-4 h-4" />
-          <span>My Performance History ({studentSubmissions.length})</span>
+          <span>History ({studentSubmissions.length})</span>
         </button>
-
         <button
           onClick={() => setActiveTab('certificates')}
           className={`pb-3 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all ${
@@ -199,8 +229,22 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
           }`}
         >
           <Award className="w-4 h-4" />
-          <span>My Certificates ({studentCertificates.length})</span>
+          <span>Certificates ({studentCertificates.length})</span>
         </button>
+        {onOpenMultiplayer && (
+          <button
+            onClick={onOpenMultiplayer}
+            className="pb-3 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all border-transparent text-amber-400 hover:text-amber-300"
+          >
+            <Swords className="w-4 h-4" />
+            <span>Multiplayer Arena</span>
+          </button>
+        )}
+      </div>
+
+      <div className="pt-2">
+        {activeTab === 'dashboard' && <StudentDashboard />}
+        {activeTab === 'leaderboard' && <StudentLeaderboard />}
       </div>
 
       {/* TAB 1: ASSIGNED ASSESSMENTS */}

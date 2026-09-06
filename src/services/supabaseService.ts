@@ -1128,6 +1128,25 @@ export async function deleteTrainer(id: string): Promise<void> {
 // 7. TESTS & ASSIGNMENTS (CENTRALIZED DATABASE TRUTH)
 // ============================================================================
 
+export async function getOrCreatePracticeTest(mode: string): Promise<string> {
+  if (!isSupabaseConfigured()) return `practice-${mode}`;
+  const title = `Practice: ${mode.charAt(0).toUpperCase() + mode.slice(1)}`;
+  const { data: existing } = await supabase.from('tests').select('id').eq('title', title).eq('is_prebuilt', true).limit(1);
+  if (existing && existing.length > 0) return existing[0].id;
+  const { data: newTest, error } = await supabase.from('tests').insert([{
+    title,
+    category: mode === 'code' ? 'code' : mode === 'story' ? 'story' : 'standard',
+    language: mode === 'code' ? 'javascript' : 'none',
+    content: 'PRACTICE_MODE',
+    time_limit_seconds: 60,
+    min_accuracy: 0,
+    is_prebuilt: true,
+    status: 'active'
+  }]).select('id').single();
+  if (error || !newTest) throw new Error('Could not create practice test');
+  return newTest.id;
+}
+
 export async function fetchTests(): Promise<TypingTest[]> {
   if (isSupabaseConfigured()) {
     try {
