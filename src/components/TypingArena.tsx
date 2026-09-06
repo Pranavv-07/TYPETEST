@@ -542,30 +542,34 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
     setTimeout(() => setShowBlurWarning(false), 4000);
   };
 
-  return (
-    <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
-      {/* Blocked Examination Attempt Banner / Screen */}
-      {attemptBlockedError && (
-        <div className="bg-rose-950/80 border-2 border-rose-500 rounded-2xl p-6 text-center space-y-4 shadow-2xl shadow-rose-950/50">
-          <div className="w-14 h-14 mx-auto rounded-full bg-rose-500/20 border border-rose-500/50 flex items-center justify-center text-rose-400">
+  if (attemptBlockedError) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-12 flex flex-col items-center justify-center min-h-[50vh]">
+        <div className="bg-rose-950/80 border-2 border-rose-500 rounded-2xl p-8 text-center space-y-5 shadow-2xl shadow-rose-950/50">
+          <div className="w-16 h-16 mx-auto rounded-full bg-rose-500/20 border border-rose-500/50 flex items-center justify-center text-rose-400">
             <ShieldAlert className="w-8 h-8" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-rose-200">Examination Access Restricted</h2>
-            <p className="text-sm text-rose-300/80 mt-1 max-w-lg mx-auto font-mono">
+            <h2 className="text-2xl font-bold text-rose-200">Examination Access Restricted</h2>
+            <p className="text-sm text-rose-300/80 mt-2 max-w-lg mx-auto font-mono">
               {attemptBlockedError}
             </p>
           </div>
           {onExitProctored && (
             <button
               onClick={onExitProctored}
-              className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-sm transition-colors border border-slate-700"
+              className="mt-4 px-6 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-sm transition-colors border border-slate-700 shadow-md"
             >
-              Return to Student Dashboard
+              Return to Dashboard
             </button>
           )}
         </div>
-      )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
 
       {/* Anti-cheat tab switch warning banner */}
       {showBlurWarning && (

@@ -7,11 +7,12 @@ import { TypingArena } from './components/TypingArena';
 import { TrainerDashboard } from './components/TrainerDashboard';
 import { StudentPortal } from './components/StudentPortal';
 import { AdminPortal } from './components/AdminPortal';
+import { MultiplayerArena } from './components/MultiplayerArena';
 import { TypingTest } from './types';
 
 const MainLayout: React.FC = () => {
   const { currentUser } = useApp();
-  const [currentView, setCurrentView] = useState<'arena' | 'trainer' | 'student' | 'admin' | 'login'>(() => {
+  const [currentView, setCurrentView] = useState<'arena' | 'trainer' | 'student' | 'admin' | 'login' | 'multiplayer'>(() => {
     // If user is already authenticated in session, route to their role dashboard
     const raw = localStorage.getItem('testtype_user_v2');
     if (raw) {
@@ -115,7 +116,12 @@ const MainLayout: React.FC = () => {
               setActiveAssessment(null);
               setCurrentView('arena');
             }}
+            onOpenMultiplayer={() => setCurrentView('multiplayer')}
           />
+        )}
+
+        {currentView === 'multiplayer' && (
+          <MultiplayerArena onExit={() => setCurrentView('student')} />
         )}
 
         {currentView === 'admin' && currentUser?.role === 'admin' && (

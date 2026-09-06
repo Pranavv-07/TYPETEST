@@ -153,8 +153,8 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
       assignedClassIds: testAssignedClasses,
       assignedStudentIds: resolvedStudentIds,
       isCustomAssignment: true,
-      startAt: testStartAt || undefined,
-      endAt: testEndAt || undefined,
+      startAt: testStartAt ? new Date(testStartAt).toISOString() : undefined,
+      endAt: testEndAt ? new Date(testEndAt).toISOString() : undefined,
       attemptLimit: 1,
       createdBy: 'trainer'
     });
