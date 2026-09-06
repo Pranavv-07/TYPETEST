@@ -346,7 +346,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       description,
       departmentId: deptId,
       batchId,
-      trainerId: currentUser?.id || 'trn-1',
+      trainerId: currentUser?.id || '',
       studentIds: [],
       status: 'active'
     });

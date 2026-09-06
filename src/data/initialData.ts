@@ -10,7 +10,7 @@ export const INITIAL_TRAINERS: Trainer[] = [
     username: 'trainer',
     name: 'Prof. Alex Vance (Proctor)',
     email: 'trainer@testtype.edu',
-    assignedClasses: ['class-1', 'class-2', 'class-3'],
+    assignedClasses: ['', '', ''],
     createdAt: '2025-01-01'
   },
   {
@@ -18,7 +18,7 @@ export const INITIAL_TRAINERS: Trainer[] = [
     username: 'proctor_sarah',
     name: 'Dr. Sarah Connor (Head Mentor)',
     email: 'sarah.connor@testtype.edu',
-    assignedClasses: ['class-1'],
+    assignedClasses: [''],
     createdAt: '2025-01-15'
   }
 ];
@@ -26,27 +26,27 @@ export const INITIAL_TRAINERS: Trainer[] = [
 // Initial Classes
 export const INITIAL_CLASSES: ClassRoom[] = [
   {
-    id: 'class-1',
+    id: '',
     name: 'CSE Alpha (2024-28)',
     trainerId: 'trn-1',
     description: 'Computer Science and Engineering - Section A Core Batch',
-    studentIds: INITIAL_STUDENTS.filter(s => s.classId === 'class-1').map(s => s.id),
+    studentIds: INITIAL_STUDENTS.filter(s => s.classId === '').map(s => s.id),
     createdAt: '2025-01-05'
   },
   {
-    id: 'class-2',
+    id: '',
     name: 'AIML Beta (2024-28)',
     trainerId: 'trn-1',
     description: 'Artificial Intelligence & Machine Learning Track',
-    studentIds: INITIAL_STUDENTS.filter(s => s.classId === 'class-2').map(s => s.id),
+    studentIds: INITIAL_STUDENTS.filter(s => s.classId === '').map(s => s.id),
     createdAt: '2025-01-05'
   },
   {
-    id: 'class-3',
+    id: '',
     name: 'Data Science Delta (2024-28)',
     trainerId: 'trn-1',
     description: 'Data Engineering and Statistical Computing Division',
-    studentIds: INITIAL_STUDENTS.filter(s => s.classId === 'class-3').map(s => s.id),
+    studentIds: INITIAL_STUDENTS.filter(s => s.classId === '').map(s => s.id),
     createdAt: '2025-01-05'
   }
 ];
@@ -62,7 +62,7 @@ export const INITIAL_TESTS: TypingTest[] = [
     language: 'python',
     timeLimit: 120,
     minAccuracy: 92,
-    assignedClassIds: ['class-1'], // Assigned to class-1
+    assignedClassIds: [''], // Assigned to class-1
     isPrebuilt: true,
     createdBy: 'trn-1',
     difficulty: 'medium',
@@ -84,7 +84,7 @@ export const INITIAL_TESTS: TypingTest[] = [
     language: 'javascript',
     timeLimit: 180,
     minAccuracy: 90,
-    assignedClassIds: ['class-1', 'class-2'], // Assigned to class-1 and class-2
+    assignedClassIds: ['', ''], // Assigned to class-1 and class-2
     isPrebuilt: true,
     createdBy: 'trn-1',
     difficulty: 'hard',
@@ -164,7 +164,7 @@ int main() {
     language: 'none',
     timeLimit: 90,
     minAccuracy: 94,
-    assignedClassIds: ['class-1'], // Assigned to class-1
+    assignedClassIds: [''], // Assigned to class-1
     isPrebuilt: true,
     createdBy: 'trn-1',
     difficulty: 'medium',
@@ -194,7 +194,7 @@ int main() {
     language: 'none',
     timeLimit: 90,
     minAccuracy: 95,
-    assignedClassIds: ['class-2', 'class-3'], // Assigned to class-2 & 3
+    assignedClassIds: ['', ''], // Assigned to class-2 & 3
     isPrebuilt: true,
     createdBy: 'trn-1',
     difficulty: 'medium',
@@ -209,7 +209,7 @@ int main() {
     language: 'none',
     timeLimit: 60,
     minAccuracy: 88,
-    assignedClassIds: ['class-1', 'class-2', 'class-3'],
+    assignedClassIds: ['', '', ''],
     isPrebuilt: true,
     createdBy: 'system',
     difficulty: 'easy',

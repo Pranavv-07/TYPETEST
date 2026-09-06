@@ -1314,7 +1314,7 @@ export async function fetchSubmissions(): Promise<TypingSubmission[]> {
           studentId: a.student_id,
           studentName: a.students?.name || 'Unknown Examinee',
           rollNo: a.students?.roll_number || 'N/A',
-          classId: a.students?.class_id || 'class-1',
+          classId: a.students?.class_id || '',
           className: 'CSE Core Cohort',
           wpm: Number(a.net_wpm),
           rawWpm: Number(a.raw_wpm),

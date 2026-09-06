@@ -128,7 +128,11 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
   const generateNewTestText = useCallback(() => {
     if (initialTest) {
       setTargetText(initialTest.content.trim());
-      setWords(initialTest.content.trim().split(/\s+/));
+      if (initialTest.category === 'code') {
+        setWords(initialTest.content.match(/\s*\S+/g) || []);
+      } else {
+        setWords(initialTest.content.trim().split(/\s+/));
+      }
       setTimeLeft(initialTest.timeLimit);
       return;
     }
@@ -156,7 +160,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
     } else if (activeMode === 'code') {
       const codeText = `function calculateMetrics(records) {\n  return records.reduce((acc, curr) => {\n    acc.totalScore += curr.score;\n    acc.count += 1;\n    return acc;\n  }, { totalScore: 0, count: 0 });\n}`;
       setTargetText(codeText);
-      setWords(codeText.split(/\s+/));
+      setWords(codeText.match(/\s*\S+/g) || []);
       setTimeLeft(90);
     }
   }, [activeMode, initialTest, timeOption, wordOption]);
@@ -345,7 +349,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
         studentId: currentUser.id,
         studentName: currentUser.name,
         rollNo: currentUser.rollNo || currentUser.username,
-        classId: studentClass?.id || 'class-1',
+        classId: studentClass?.id || '',
         className: studentClass?.name || 'CSE Alpha (2024-28)',
         wpm: currentStats.netWpm,
         rawWpm: currentStats.rawWpm,
@@ -434,7 +438,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
       return;
     }
 
-    const currentTargetWord = words[currentWordIndex] || '';
+    const currentTargetWord = (words[currentWordIndex] || '').trim();
 
     // Handle Backspace
     if (e.key === 'Backspace') {
@@ -815,64 +819,77 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
             className="max-h-60 overflow-y-auto font-mono text-lg sm:text-2xl leading-relaxed tracking-wide space-x-2 text-left relative transition-all"
             style={{ fontFamily: "'Fira Code', monospace" }}
           >
-            {words.map((word, wIdx) => {
+            {words.map((rawWord, wIdx) => {
+              const word = rawWord.trim();
+              const prefix = rawWord.substring(0, rawWord.length - word.length);
+              const newlines = (prefix.match(/\n/g) || []).length;
+              const indentStr = prefix.split('\n').pop() || '';
+              const indentCount = indentStr.length;
+              
               const isActive = wIdx === currentWordIndex;
               const currentInput = isActive ? inputVal : typedWords[wIdx] || '';
 
               return (
-                <span
-                  key={wIdx}
-                  ref={isActive ? activeWordRef : null}
-                  className={`inline-block py-1 rounded transition-colors ${
-                    isActive ? 'bg-slate-800/40 px-1' : ''
-                  }`}
-                >
-                  {word.split('').map((char, cIdx) => {
-                    let charColor = 'text-slate-600'; // untyped
-                    let bg = '';
-
-                    if (cIdx < currentInput.length) {
-                      if (currentInput[cIdx] === char) {
-                        charColor = 'text-slate-100 font-medium'; // correct
-                      } else {
-                        charColor = 'text-rose-400';
-                        bg = 'bg-rose-500/20'; // incorrect
-                      }
-                    }
-
-                    const isCaretHere = isActive && cIdx === currentInput.length;
-
-                    return (
-                      <span key={cIdx} className={`relative ${charColor} ${bg} rounded-sm px-[1px]`}>
-                        {isCaretHere && (
-                          <span className="absolute -left-[1px] top-0 bottom-0 w-[2px] bg-cyan-400 animate-pulse" />
-                        )}
-                        {char}
-                      </span>
-                    );
-                  })}
-
-                  {/* Extra letters typed beyond target word */}
-                  {currentInput.length > word.length &&
-                    currentInput
-                      .slice(word.length)
-                      .split('')
-                      .map((extraChar, eIdx) => (
-                        <span
-                          key={`extra-${eIdx}`}
-                          className="text-rose-400 line-through bg-rose-950/40 px-[1px]"
-                        >
-                          {extraChar}
-                        </span>
-                      ))}
-
-                  {/* Caret at the end of word */}
-                  {isActive && currentInput.length >= word.length && (
-                    <span className="relative">
-                      <span className="absolute -left-[1px] top-0 bottom-0 w-[2px] bg-cyan-400 animate-pulse" />
-                    </span>
+                <React.Fragment key={wIdx}>
+                  {newlines > 0 && Array.from({ length: newlines }).map((_, i) => (
+                    <div key={`nl-${wIdx}-${i}`} className={`w-full ${i > 0 ? 'h-6' : 'h-0'} basis-full`}></div>
+                  ))}
+                  {newlines > 0 && indentCount > 0 && (
+                    <span style={{ width: `${indentCount * 1}ch` }} className="inline-block pointer-events-none select-none"></span>
                   )}
-                </span>
+                  <span
+                    ref={isActive ? activeWordRef : null}
+                    className={`inline-block py-1 rounded transition-colors ${
+                      isActive ? 'bg-slate-800/40 px-1' : ''
+                    }`}
+                  >
+                    {word.split('').map((char, cIdx) => {
+                      let charColor = 'text-slate-600'; // untyped
+                      let bg = '';
+
+                      if (cIdx < currentInput.length) {
+                        if (currentInput[cIdx] === char) {
+                          charColor = 'text-slate-100 font-medium'; // correct
+                        } else {
+                          charColor = 'text-rose-400';
+                          bg = 'bg-rose-500/20'; // incorrect
+                        }
+                      }
+
+                      const isCaretHere = isActive && cIdx === currentInput.length;
+
+                      return (
+                        <span key={cIdx} className={`relative ${charColor} ${bg} rounded-sm px-[1px]`}>
+                          {isCaretHere && (
+                            <span className="absolute -left-[1px] top-0 bottom-0 w-[2px] bg-cyan-400 animate-pulse" />
+                          )}
+                          {char}
+                        </span>
+                      );
+                    })}
+
+                    {/* Extra letters typed beyond target word */}
+                    {currentInput.length > word.length &&
+                      currentInput
+                        .slice(word.length)
+                        .split('')
+                        .map((extraChar, eIdx) => (
+                          <span
+                            key={`extra-${eIdx}`}
+                            className="text-rose-400 line-through bg-rose-950/40 px-[1px]"
+                          >
+                            {extraChar}
+                          </span>
+                        ))}
+
+                    {/* Caret at the end of word */}
+                    {isActive && currentInput.length >= word.length && (
+                      <span className="relative">
+                        <span className="absolute -left-[1px] top-0 bottom-0 w-[2px] bg-cyan-400 animate-pulse" />
+                      </span>
+                    )}
+                  </span>
+                </React.Fragment>
               );
             })}
           </div>

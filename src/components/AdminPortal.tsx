@@ -127,7 +127,7 @@ export const AdminPortal: React.FC = () => {
   const [newRollNo, setNewRollNo] = useState('');
   const [newStudentName, setNewStudentName] = useState('');
   const [newStudentBatch, setNewStudentBatch] = useState('2024-28');
-  const [newStudentClass, setNewStudentClass] = useState(classes[0]?.id || 'class-1');
+  const [newStudentClass, setNewStudentClass] = useState(classes[0]?.id || '');
   const [newStudentPassword, setNewStudentPassword] = useState('');
 
   // Edit student modal
@@ -159,9 +159,15 @@ export const AdminPortal: React.FC = () => {
   // Bulk Upload State
   const [pasteData, setPasteData] = useState('');
   const [parsedPreview, setParsedPreview] = useState<{ rollNo: string; name: string }[]>([]);
-  const [bulkClassId, setBulkClassId] = useState(classes[0]?.id || 'class-1');
+  const [bulkClassId, setBulkClassId] = useState('');
   const [bulkSuccessMsg, setBulkSuccessMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (classes.length > 0 && (!bulkClassId || !classes.find(c => c.id === bulkClassId))) {
+      setBulkClassId(classes[0].id);
+    }
+  }, [classes, bulkClassId]);
 
   // Parse Bulk Input
   const handleParsePaste = (text: string) => {
@@ -196,10 +202,15 @@ export const AdminPortal: React.FC = () => {
     setBulkErrorMsg('');
     try {
       const selectedClass = classes.find(c => c.id === bulkClassId);
+      
+      if (!selectedClass) {
+        throw new Error('Please select a valid target classroom before importing.');
+      }
+
       const studentObjects = parsedPreview.map(p => ({
         rollNo: p.rollNo,
         name: p.name,
-        batch: selectedClass?.batchId || '2024-28',
+        batchId: selectedClass.batchId,
         classId: bulkClassId
       }));
 
@@ -222,11 +233,16 @@ export const AdminPortal: React.FC = () => {
 
     setStudentModalError('');
     try {
+      const selectedClass = classes.find(c => c.id === newStudentClass);
+      if (!selectedClass) {
+        throw new Error('Please select a valid classroom.');
+      }
+
       await addStudent({
         rollNo: newRollNo.trim().toUpperCase(),
         name: newStudentName.trim(),
-        batch: newStudentBatch.trim(),
-        classId: newStudentClass,
+        batchId: selectedClass.batchId,
+        classId: selectedClass.id,
         password: newStudentPassword.trim() || undefined
       });
 
@@ -243,11 +259,12 @@ export const AdminPortal: React.FC = () => {
     e.preventDefault();
     if (!editingStudent) return;
 
+    const selectedClass = classes.find(c => c.id === editStudentClass);
     await updateStudent(editingStudent.id, {
       name: editStudentName.trim(),
       rollNo: editStudentRollNo.trim().toUpperCase(),
-      batch: editStudentBatch.trim(),
-      classId: editStudentClass,
+      batchId: selectedClass?.batchId,
+      classId: selectedClass?.id,
       password: editStudentPassword.trim() || undefined
     });
 
@@ -263,7 +280,7 @@ export const AdminPortal: React.FC = () => {
       username: newTrainerUsername.trim(),
       name: newTrainerName.trim(),
       email: newTrainerEmail.trim(),
-      assignedClasses: [classes[0]?.id || 'class-1'],
+      assignedClasses: classes.length > 0 ? [classes[0].id] : [],
       password: newTrainerPassword.trim() || undefined
     });
 
@@ -793,7 +810,7 @@ export const AdminPortal: React.FC = () => {
                             setEditStudentName(s.name);
                             setEditStudentRollNo(s.rollNo);
                             setEditStudentBatch(s.batch || '2024-28');
-                            setEditStudentClass(s.classId || classes[0]?.id || 'class-1');
+                            setEditStudentClass(s.classId || classes[0]?.id || '');
                             setEditStudentPassword(s.password || '');
                           }}
                           className="p-1 hover:text-cyan-400 transition-colors"
