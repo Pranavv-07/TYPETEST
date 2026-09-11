@@ -33,11 +33,9 @@ import {
   Flame,
   Clock
 } from 'lucide-react';
-import { DatabaseDiagnosticModal } from './DatabaseDiagnosticModal';
 import { checkDatabaseConnection, DatabaseConnectionStatus } from '../services/supabaseService';
 
 export const AdminPortal: React.FC = () => {
-  const [showDbDiagModal, setShowDbDiagModal] = useState(false);
   const [dbStatus, setDbStatus] = useState<DatabaseConnectionStatus | null>(null);
   const [studentModalError, setStudentModalError] = useState('');
   const [bulkErrorMsg, setBulkErrorMsg] = useState('');
@@ -398,13 +396,7 @@ export const AdminPortal: React.FC = () => {
             <span>Sync DB</span>
           </button>
 
-          <button
-            onClick={() => setShowDbDiagModal(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs border border-slate-700 transition-colors"
-          >
-            <Database className="w-3.5 h-3.5 text-emerald-400" />
-            <span>DB Diagnostics</span>
-          </button>
+          
 
           <button
             onClick={() => setShowAddStudentModal(true)}
@@ -439,13 +431,7 @@ export const AdminPortal: React.FC = () => {
               </p>
             </div>
           </div>
-          <button
-            onClick={() => setShowDbDiagModal(true)}
-            className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs rounded-xl shrink-0 transition-colors shadow-lg shadow-amber-500/10 flex items-center justify-center gap-1.5"
-          >
-            <Database className="w-4 h-4" />
-            <span>Open 1-Click SQL Setup</span>
-          </button>
+          
         </div>
       )}
 
@@ -1159,14 +1145,6 @@ export const AdminPortal: React.FC = () => {
                   <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
                   <span>{bulkErrorMsg}</span>
                 </div>
-                {bulkErrorMsg.includes('SQL') || bulkErrorMsg.includes('missing') || bulkErrorMsg.includes('table') ? (
-                  <button
-                    onClick={() => setShowDbDiagModal(true)}
-                    className="px-3 py-1.5 bg-rose-500 hover:bg-rose-400 text-slate-950 font-bold rounded-lg text-xs"
-                  >
-                    Open Database Setup Guide & Copy SQL
-                  </button>
-                ) : null}
               </div>
             )}
 
@@ -1403,11 +1381,10 @@ export const AdminPortal: React.FC = () => {
                     onClick={() => {
                       setShowAddStudentModal(false);
                       setStudentModalError('');
-                      setShowDbDiagModal(true);
                     }}
                     className="w-full py-1.5 bg-rose-500 hover:bg-rose-400 text-slate-950 font-bold rounded-lg text-xs transition-colors"
                   >
-                    Open Database Setup Guide & Copy SQL
+                    Close Modal
                   </button>
                 ) : null}
               </div>
@@ -1631,11 +1608,7 @@ export const AdminPortal: React.FC = () => {
         </div>
       )}
 
-      {/* DATABASE DIAGNOSTIC MODAL */}
-      <DatabaseDiagnosticModal
-        isOpen={showDbDiagModal}
-        onClose={() => setShowDbDiagModal(false)}
-      />
+      
     </div>
   );
 };

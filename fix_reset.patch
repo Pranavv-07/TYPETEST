@@ -1,0 +1,32 @@
+--- src/components/MultiplayerArena.tsx
++++ src/components/MultiplayerArena.tsx
+@@ -83,6 +83,21 @@
+         setRoomState('racing');
+         setStartTime(Date.now());
+         if (inputRef.current) inputRef.current.focus();
++      })
++      .on('broadcast', { event: 'reset_race' }, () => {
++        setTypedWords(['']);
++        setCurrentWordIndex(0);
++        setInputVal('');
++        setMyWpm(0);
++        setMyAccuracy(100);
++        setMyProgress(0);
++        setStartTime(null);
++        totalKeystrokesRef.current = 0;
++        correctKeystrokesRef.current = 0;
++        incorrectKeystrokesRef.current = 0;
++        
++        setRoomState('waiting');
++        if (hostId === myId) {
++            const randomText = PASSAGES[Math.floor(Math.random() * PASSAGES.length)];
++            setRaceText(randomText);
++            setWords(randomText.split(' '));
++            channel.send({
++              type: 'broadcast',
++              event: 'room_info',
++              payload: { hostId, raceText: randomText }
++            });
++        }
+       })
+       .subscribe(async (status) => {
