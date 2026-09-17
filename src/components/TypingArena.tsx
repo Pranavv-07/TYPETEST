@@ -28,7 +28,7 @@ interface TypingArenaProps {
 }
 
 
-const WordRenderer = memo(({ rawWord, wIdx, isActive, currentInput, activeWordRef }: any) => {
+const WordRenderer = React.memo(({ rawWord, wIdx, isActive, currentInput, activeWordRef }: any) => {
   const word = rawWord.trim();
   const prefix = rawWord.substring(0, rawWord.length - word.length);
   const newlines = (prefix.match(/\n/g) || []).length;

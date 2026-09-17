@@ -4,6 +4,7 @@ import {
 import { TypingTest, TestCategory, ProgrammingLanguage, TestReport, Student } from '../types';
 import { LeaderboardModal } from './LeaderboardModal';
 import { ReportModal } from './ReportModal';
+import { CertificateGeneratorModal } from './CertificateGeneratorModal';
 import {
   Users,
   Plus,
@@ -56,6 +57,7 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'monitoring' | 'tests' | 'reports' | 'classes' | 'certificates'>('monitoring');
+  const [isCertModalOpen, setIsCertModalOpen] = useState(false);
 
   // Modal states
   const [showCreateClassModal, setShowCreateClassModal] = useState(false);
@@ -1276,6 +1278,9 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
       {activeTab === 'certificates' && (
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <button onClick={() => setIsCertModalOpen(true)} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-2 transition-colors shrink-0">
+              <Plus size={18} /> Custom Certificate
+            </button>
             <div>
               <h2 className="text-xl font-bold text-slate-100">Certificate Verification & Issuance</h2>
               <p className="text-sm text-slate-400">View and verify student assessment certificates.</p>
@@ -1355,6 +1360,16 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
         </div>
       )}
 
+      {isCertModalOpen && (
+        <CertificateGeneratorModal 
+          onClose={() => setIsCertModalOpen(false)} 
+          students={students} 
+          onGenerate={(cert) => {
+            // Ideally we'd have an addCertificate in AppContext, but we can just mutate state for the prototype or push it
+            console.log("Generated cert:", cert);
+          }} 
+        />
+      )}
     </div>
   );
 };
