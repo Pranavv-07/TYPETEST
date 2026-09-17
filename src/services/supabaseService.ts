@@ -416,7 +416,7 @@ export async function submitTestAttemptAtomic(
   attemptId: string,
   submission: Omit<TypingSubmission, 'id' | 'timestamp'>
 ): Promise<{ success: boolean; submission?: TypingSubmission; certificate?: StudentCertificate; message?: string }> {
-  const subId = `sub-${Date.now()}`;
+  const subId = attemptId || `sub-${Date.now()}`;
   const completeSubmission: TypingSubmission = {
     ...submission,
     id: subId,

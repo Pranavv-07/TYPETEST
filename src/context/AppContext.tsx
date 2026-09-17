@@ -235,6 +235,33 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     refreshData();
   }, [refreshData]);
 
+
+  // Validate session on load
+  useEffect(() => {
+    const validateSession = async () => {
+      if (currentUser && isDatabaseConnected) {
+        // verify user still exists and is active
+        try {
+          const { data, error } = await supabase
+            .from(currentUser.role + 's')
+            .select('status')
+            .eq('id', currentUser.id)
+            .single();
+            
+          if (error || !data || data.status !== 'active') {
+            console.warn("Invalid session, logging out");
+            logout();
+          }
+        } catch (err) {
+          console.error("Session validation error:", err);
+        }
+      }
+    };
+    
+    validateSession();
+  }, []);
+
+
   // Supabase Realtime Subscriptions (For live proctoring and examiner dashboards)
   useEffect(() => {
     if (!isDatabaseConnected) return;
