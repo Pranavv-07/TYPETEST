@@ -31,7 +31,8 @@ import {
   ShieldCheck,
   Share2,
   UserCheck,
-  ExternalLink
+  ExternalLink,
+  Award
 } from 'lucide-react';
 
 interface TrainerDashboardProps {

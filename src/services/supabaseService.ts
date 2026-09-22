@@ -299,7 +299,8 @@ export async function startTestAttemptAtomic(
       if (error) {
         return { success: false, message: error.message };
       }
-      return { success: true, attempt: data };
+      const attemptObj = data?.attempt || data;
+      return { success: true, attempt: attemptObj };
     } catch (err: any) {
       return { success: false, message: err.message || 'Database transaction error' };
     }
@@ -451,41 +452,128 @@ export async function submitTestAttemptAtomic(
     memoryCertificates.push(issuedCertificate);
   }
 
-  if (isSupabaseConfigured() && attemptId) {
+  if (isSupabaseConfigured()) {
     try {
-      const { data, error } = await supabase.rpc('submit_test_attempt', {
-        p_attempt_id: attemptId,
-        p_net_wpm: submission.netWpm,
-        p_raw_wpm: submission.rawWpm,
-        p_accuracy: submission.accuracy,
-        p_correct_characters: submission.correctChars,
-        p_total_characters: submission.totalChars,
-        p_errors: submission.errors,
-        p_violation_count: submission.proctorBlurFlags || 0,
-        p_history: submission.history || []
-      });
+      const isUuid = attemptId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(attemptId);
+      let certRecord: any = null;
 
-      if (error) {
-        console.error('Supabase submit RPC error:', error);
-      } else if (data?.certificate) {
+      if (isUuid) {
+        // 1. Submit existing proctored attempt via RPC
+        const { data, error } = await supabase.rpc('submit_test_attempt', {
+          p_attempt_id: attemptId,
+          p_net_wpm: submission.netWpm,
+          p_raw_wpm: submission.rawWpm,
+          p_accuracy: submission.accuracy,
+          p_correct_characters: submission.correctChars,
+          p_total_characters: submission.totalChars,
+          p_errors: submission.errors,
+          p_violation_count: submission.proctorBlurFlags || 0,
+          p_history: submission.history || []
+        });
+
+        if (!error && data?.certificate) {
+          certRecord = data.certificate;
+        } else if (error) {
+          console.warn('RPC submit attempt fallback to direct update:', error);
+          // Fallback to direct update on attempts table
+          await supabase.from('attempts').update({
+            status: 'submitted',
+            submitted_at: new Date().toISOString(),
+            net_wpm: submission.netWpm,
+            raw_wpm: submission.rawWpm,
+            accuracy: submission.accuracy,
+            correct_characters: submission.correctChars,
+            total_characters: submission.totalChars,
+            errors: submission.errors,
+            violation_count: submission.proctorBlurFlags || 0,
+            history: submission.history || [],
+            time_taken_seconds: submission.timeTaken || 60
+          }).eq('id', attemptId);
+        }
+      } else {
+        // 2. Practice arena attempt: persist cleanly in tests and attempts tables
+        let targetTestId = submission.testId;
+        const isTestUuid = targetTestId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetTestId);
+
+        if (!isTestUuid) {
+          const { data: newTestRow } = await supabase.from('tests').insert([{
+            title: submission.testTitle || `Practice: ${submission.testCategory || 'Standard'}`,
+            category: submission.testCategory || 'standard',
+            language: submission.language || 'none',
+            content: 'PRACTICE_MODE',
+            time_limit_seconds: submission.timeTaken || 60,
+            min_accuracy: 0,
+            is_prebuilt: true,
+            status: 'active'
+          }]).select('id').single();
+
+          if (newTestRow?.id) {
+            targetTestId = newTestRow.id;
+          }
+        }
+
+        if (targetTestId && submission.studentId) {
+          const { data: attRow } = await supabase.from('attempts').insert([{
+            test_id: targetTestId,
+            student_id: submission.studentId,
+            status: 'submitted',
+            started_at: new Date(Date.now() - (submission.timeTaken || 60) * 1000).toISOString(),
+            submitted_at: new Date().toISOString(),
+            net_wpm: submission.netWpm,
+            raw_wpm: submission.rawWpm,
+            accuracy: submission.accuracy,
+            correct_characters: submission.correctChars,
+            total_characters: submission.totalChars,
+            errors: submission.errors,
+            violation_count: submission.proctorBlurFlags || 0,
+            history: submission.history || [],
+            time_taken_seconds: submission.timeTaken || 60
+          }]).select('id').single();
+
+          if (attRow?.id && submission.accuracy >= 90 && submission.netWpm >= 20) {
+            const certNumber = `TYPETEST-2026-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+            const verifyCode = `V-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+            const { data: createdCert } = await supabase.from('certificates').insert([{
+              student_id: submission.studentId,
+              attempt_id: attRow.id,
+              test_id: targetTestId,
+              certificate_number: certNumber,
+              verification_code: verifyCode,
+              score: submission.netWpm,
+              accuracy: submission.accuracy,
+              achievement_title: `${submission.netWpm >= 60 ? 'Master' : submission.netWpm >= 40 ? 'Proficient' : 'Standard'} Assessment Certification`,
+              issued_at: new Date().toISOString(),
+              status: 'valid'
+            }]).select('*').single();
+
+            if (createdCert) {
+              certRecord = createdCert;
+            }
+          }
+        }
+      }
+
+      if (certRecord) {
         issuedCertificate = {
-          id: data.certificate.id,
-          studentId: data.certificate.student_id,
+          id: certRecord.id,
+          studentId: certRecord.student_id,
           studentName: submission.studentName,
           rollNo: submission.rollNo,
-          achievementTitle: `${submission.netWpm >= 60 ? 'Master' : submission.netWpm >= 40 ? 'Proficient' : 'Standard'} Assessment Certification`,
-          wpm: data.certificate.score,
-          accuracy: data.certificate.accuracy,
+          achievementTitle: certRecord.achievement_title || `${submission.netWpm >= 60 ? 'Master' : 'Proficient'} Assessment Certification`,
+          wpm: Number(certRecord.score || submission.netWpm),
+          accuracy: Number(certRecord.accuracy || submission.accuracy),
           testTitle: submission.testTitle,
-          issuedAt: data.certificate.issued_at,
+          issuedAt: certRecord.issued_at || new Date().toISOString(),
           issuingAuthority: 'Department of Computer Science & Engineering',
-          verificationCode: data.certificate.verification_code,
-          certificateNumber: data.certificate.certificate_number,
-          status: data.certificate.status
+          verificationCode: certRecord.verification_code,
+          certificateNumber: certRecord.certificate_number,
+          status: certRecord.status || 'valid'
         };
+        // Add or update in memory certificates
+        memoryCertificates = [issuedCertificate, ...memoryCertificates.filter(c => c.id !== issuedCertificate!.id)];
       }
     } catch (e) {
-      console.warn('Supabase submit RPC failed:', e);
+      console.warn('Supabase submit attempt error:', e);
     }
   }
 
@@ -1324,31 +1412,43 @@ export async function fetchSubmissions(): Promise<TypingSubmission[]> {
         .order('submitted_at', { ascending: false });
 
       if (!error && data) {
-        return data.map(a => ({
-          id: a.id,
-          testId: a.test_id,
-          testTitle: a.tests?.title || 'Examination Module',
-          testCategory: (a.tests?.category || 'standard') as any,
-          language: (a.tests?.language || 'none') as any,
-          studentId: a.student_id,
-          studentName: a.students?.name || 'Unknown Examinee',
-          rollNo: a.students?.roll_number || 'N/A',
-          classId: a.students?.class_id || '',
-          className: 'CSE Core Cohort',
-          wpm: Number(a.net_wpm),
-          rawWpm: Number(a.raw_wpm),
-          netWpm: Number(a.net_wpm),
-          accuracy: Number(a.accuracy),
-          errors: a.errors,
-          totalChars: a.total_characters,
-          correctChars: a.correct_characters,
-          timeTaken: 120,
-          proctorBlurFlags: a.violation_count,
-          passed: Number(a.accuracy) >= 90 && Number(a.net_wpm) >= 20,
-          history: a.history || [],
-          timestamp: a.submitted_at || a.created_at,
-          status: a.status
-        }));
+        const dbSubs: TypingSubmission[] = data.map(a => {
+          const localStudent = memoryStudents.find(s => s.id === a.student_id);
+          return {
+            id: a.id,
+            testId: a.test_id,
+            testTitle: a.tests?.title || 'Examination Module',
+            testCategory: (a.tests?.category || 'standard') as any,
+            language: (a.tests?.language || 'none') as any,
+            studentId: a.student_id,
+            studentName: a.students?.name || localStudent?.name || 'Unknown Examinee',
+            rollNo: a.students?.roll_number || localStudent?.rollNo || 'N/A',
+            classId: a.students?.class_id || localStudent?.classId || '',
+            className: 'CSE Core Cohort',
+            wpm: Number(a.net_wpm),
+            rawWpm: Number(a.raw_wpm),
+            netWpm: Number(a.net_wpm),
+            accuracy: Number(a.accuracy),
+            errors: a.errors,
+            totalChars: a.total_characters,
+            correctChars: a.correct_characters,
+            timeTaken: Number(a.time_taken_seconds) || 60,
+            proctorBlurFlags: a.violation_count,
+            passed: Number(a.accuracy) >= 90 && Number(a.net_wpm) >= 20,
+            history: a.history || [],
+            timestamp: a.submitted_at || a.created_at,
+            status: a.status
+          };
+        });
+
+        // Merge with any local memory submissions not yet in DB
+        const merged = [...dbSubs];
+        for (const mem of memorySubmissions) {
+          if (!merged.some(m => m.id === mem.id)) {
+            merged.push(mem);
+          }
+        }
+        return merged;
       }
     } catch (e) {
       console.error(e);
@@ -1438,21 +1538,32 @@ export async function fetchCertificates(): Promise<StudentCertificate[]> {
         .order('issued_at', { ascending: false });
 
       if (!error && data) {
-        return data.map(c => ({
-          id: c.id,
-          studentId: c.student_id,
-          studentName: c.students?.name || 'Verified Candidate',
-          rollNo: c.students?.roll_number || 'N/A',
-          achievementTitle: `${Number(c.score) >= 60 ? 'Master' : 'Proficient'} Assessment Certification`,
-          wpm: Number(c.score),
-          accuracy: Number(c.accuracy),
-          testTitle: c.tests?.title || 'Technical Typing Assessment',
-          issuedAt: c.issued_at,
-          issuingAuthority: 'Department of Computer Science & Engineering',
-          verificationCode: c.verification_code,
-          certificateNumber: c.certificate_number,
-          status: c.status
-        }));
+        const dbCerts: StudentCertificate[] = data.map(c => {
+          const localStudent = memoryStudents.find(s => s.id === c.student_id);
+          return {
+            id: c.id,
+            studentId: c.student_id,
+            studentName: c.students?.name || localStudent?.name || 'Verified Candidate',
+            rollNo: c.students?.roll_number || localStudent?.rollNo || 'N/A',
+            achievementTitle: c.achievement_title || `${Number(c.score) >= 60 ? 'Master' : 'Proficient'} Assessment Certification`,
+            wpm: Number(c.score),
+            accuracy: Number(c.accuracy),
+            testTitle: c.tests?.title || 'Technical Typing Assessment',
+            issuedAt: c.issued_at,
+            issuingAuthority: 'Department of Computer Science & Engineering',
+            verificationCode: c.verification_code,
+            certificateNumber: c.certificate_number,
+            status: c.status
+          };
+        });
+
+        const merged = [...dbCerts];
+        for (const mem of memoryCertificates) {
+          if (!merged.some(m => m.id === mem.id)) {
+            merged.push(mem);
+          }
+        }
+        return merged;
       }
     } catch (e) {
       console.error(e);

@@ -6,7 +6,12 @@ import { Trophy, Clock, Target, Zap, Activity, Calendar, Flame } from 'lucide-re
 export const StudentDashboard: React.FC = () => {
   const { currentUser, submissions, students } = useApp();
 
-  const mySubmissions = useMemo(() => submissions.filter(s => s.studentId === currentUser?.id), [submissions, currentUser]);
+  const mySubmissions = useMemo(() => submissions.filter(s =>
+    s.studentId === currentUser?.id ||
+    (currentUser?.rollNo && s.rollNo && s.rollNo.trim().toUpperCase() === currentUser.rollNo.trim().toUpperCase()) ||
+    (currentUser?.username && s.rollNo && s.rollNo.trim().toUpperCase() === currentUser.username.trim().toUpperCase()) ||
+    (currentUser?.name && s.studentName && s.studentName.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
+  ), [submissions, currentUser]);
   
   const stats = useMemo(() => {
     let bestWpm = 0;

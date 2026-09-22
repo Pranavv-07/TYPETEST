@@ -578,11 +578,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
     const res = await submitTestAttemptAtomic(finalAttemptId, submissionData);
     if (res.submission) {
-      setSubmissions(prev => [res.submission!, ...prev]);
+      setSubmissions(prev => [res.submission!, ...prev.filter(s => s.id !== res.submission!.id)]);
     }
     if (res.certificate) {
-      setCertificates(prev => [res.certificate!, ...prev]);
+      setCertificates(prev => [res.certificate!, ...prev.filter(c => c.id !== res.certificate!.id)]);
     }
+    // Synchronize global dashboard stores
+    setTimeout(() => {
+      refreshData().catch(console.error);
+    }, 150);
     return res;
   };
 

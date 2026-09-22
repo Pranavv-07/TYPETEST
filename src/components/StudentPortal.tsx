@@ -77,14 +77,18 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
   const studentSubmissions = submissions.filter(
     s =>
       s.studentId === currentUser?.id ||
-      s.rollNo.toUpperCase() === (currentUser?.rollNo || '').toUpperCase()
+      (currentUser?.rollNo && s.rollNo && s.rollNo.trim().toUpperCase() === currentUser.rollNo.trim().toUpperCase()) ||
+      (currentUser?.username && s.rollNo && s.rollNo.trim().toUpperCase() === currentUser.username.trim().toUpperCase()) ||
+      (currentUser?.name && s.studentName && s.studentName.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
   );
 
   // Filter certificates for this student
   const studentCertificates = certificates.filter(
     c =>
       c.studentId === currentUser?.id ||
-      c.rollNo.toUpperCase() === (currentUser?.rollNo || '').toUpperCase()
+      (currentUser?.rollNo && c.rollNo && c.rollNo.trim().toUpperCase() === currentUser.rollNo.trim().toUpperCase()) ||
+      (currentUser?.username && c.rollNo && c.rollNo.trim().toUpperCase() === currentUser.username.trim().toUpperCase()) ||
+      (currentUser?.name && c.studentName && c.studentName.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
   );
 
   // Performance calculations

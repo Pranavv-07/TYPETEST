@@ -4,6 +4,7 @@ import { TypingTest, TypingMode, SubmissionHistoryPoint } from '../types';
 import { MONKEYTYPE_WORDS } from '../data/initialData';
 import { soundController } from '../utils/audio';
 import confetti from 'canvas-confetti';
+import { D3SessionChart } from './D3SessionChart';
 import {
   RotateCcw,
   Clock,
@@ -257,6 +258,49 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
     resetTest();
   }, [resetTest]);
 
+  // Tab + Enter Test Restart Tracker (for Practice Arena)
+  const tabPressedRef = useRef<boolean>(false);
+  const tabDownRef = useRef<boolean>(false);
+  const tabTimerRef = useRef<any>(null);
+
+  useEffect(() => {
+    // Only enabled for practice arena, not proctored single-attempt assessments
+    if (isAssessment) return;
+
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Tab') {
+        tabDownRef.current = true;
+        tabPressedRef.current = true;
+        clearTimeout(tabTimerRef.current);
+        tabTimerRef.current = setTimeout(() => {
+          tabPressedRef.current = false;
+        }, 1500);
+      } else if (e.key === 'Enter') {
+        if (tabDownRef.current || tabPressedRef.current) {
+          e.preventDefault();
+          tabDownRef.current = false;
+          tabPressedRef.current = false;
+          clearTimeout(tabTimerRef.current);
+          resetTest();
+        }
+      }
+    };
+
+    const handleGlobalKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Tab') {
+        tabDownRef.current = false;
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    window.addEventListener('keyup', handleGlobalKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeyDown);
+      window.removeEventListener('keyup', handleGlobalKeyUp);
+      clearTimeout(tabTimerRef.current);
+    };
+  }, [isAssessment, resetTest]);
+
   // Anti-Cheat Window Blur Tracker & Visibility Change
   useEffect(() => {
     const handleBlur = () => {
@@ -494,6 +538,27 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
       if (e.key === 'Backspace' || e.key.length === 1) {
         soundController.playKeyClick();
       }
+    }
+
+    // Tab + Enter shortcut handling in Practice Arena
+    if (!isAssessment && e.key === 'Tab') {
+      e.preventDefault();
+      tabDownRef.current = true;
+      tabPressedRef.current = true;
+      clearTimeout(tabTimerRef.current);
+      tabTimerRef.current = setTimeout(() => {
+        tabPressedRef.current = false;
+      }, 1500);
+      return;
+    }
+
+    if (!isAssessment && e.key === 'Enter' && (tabDownRef.current || tabPressedRef.current)) {
+      e.preventDefault();
+      tabDownRef.current = false;
+      tabPressedRef.current = false;
+      clearTimeout(tabTimerRef.current);
+      resetTest();
+      return;
     }
 
     // Ignore modifier keys alone
@@ -860,8 +925,9 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
 
       {/* Main Interactive Typing Container */}
       {!testFinished ? (
-        <div
-          onClick={() => inputRef.current?.focus()}
+        <>
+          <div
+            onClick={() => inputRef.current?.focus()}
           onCopy={(e) => e.preventDefault()}
           onCut={(e) => e.preventDefault()}
           onContextMenu={(e) => e.preventDefault()}
@@ -914,16 +980,33 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
               )}
             </div>
             {!initialTest?.isCustomAssignment && (
-              <button
-                onClick={resetTest}
-                className="flex items-center gap-1.5 text-slate-400 hover:text-cyan-400 transition-colors"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>restart test</span>
-              </button>
+              <div className="flex items-center gap-3">
+                <span className="hidden sm:inline-flex items-center gap-1.5 text-[11px] text-slate-500 font-mono">
+                  <span>restart</span>
+                  <kbd className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 font-semibold text-[10px]">Tab</kbd>
+                  <span>+</span>
+                  <kbd className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 font-semibold text-[10px]">Enter</kbd>
+                </span>
+                <button
+                  onClick={resetTest}
+                  className="flex items-center gap-1.5 text-slate-400 hover:text-cyan-400 transition-colors"
+                  title="Press Tab + Enter to restart anytime"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>restart test</span>
+                </button>
+              </div>
             )}
           </div>
         </div>
+
+        {/* Live D3 Session Telemetry Line Chart */}
+        {testStarted && !testFinished && (
+          <div className="w-full">
+            <D3SessionChart data={speedHistory} height={170} isLive={true} />
+          </div>
+        )}
+        </>
       ) : (
         /* Results Scorecard (Typing.com & Monkeytype style) */
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
@@ -1031,73 +1114,8 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
             </div>
           </div>
 
-          {/* SVG Progression Speed Chart */}
-          <div className="bg-slate-950/90 border border-slate-800 rounded-2xl p-4 sm:p-6 space-y-3">
-            <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
-              <div className="flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-cyan-400" />
-                <span className="font-bold text-slate-200">WPM Velocity Curve</span>
-              </div>
-              <div>Seconds Progression</div>
-            </div>
-
-            <div className="h-40 w-full relative pt-4">
-              {speedHistory.length > 1 ? (
-                <svg className="w-full h-full overflow-visible" viewBox="0 0 500 120" preserveAspectRatio="none">
-                  {/* Grid lines */}
-                  <line x1="0" y1="30" x2="500" y2="30" stroke="#334155" strokeDasharray="3,3" />
-                  <line x1="0" y1="60" x2="500" y2="60" stroke="#334155" strokeDasharray="3,3" />
-                  <line x1="0" y1="90" x2="500" y2="90" stroke="#334155" strokeDasharray="3,3" />
-
-                  {/* Gradient fill */}
-                  <defs>
-                    <linearGradient id="wpmGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.4" />
-                      <stop offset="100%" stopColor="#06b6d4" stopOpacity="0.0" />
-                    </linearGradient>
-                  </defs>
-
-                  {/* Calculate path coordinates */}
-                  {(() => {
-                    const maxWpm = Math.max(...speedHistory.map(h => h.wpm), 80);
-                    const points = speedHistory.map((pt, i) => {
-                      const x = (i / (speedHistory.length - 1)) * 500;
-                      const y = 110 - (pt.wpm / maxWpm) * 95;
-                      return `${x},${y}`;
-                    });
-
-                    const pathStr = `M ${points.join(' L ')}`;
-                    const areaStr = `${pathStr} L 500,110 L 0,110 Z`;
-
-                    return (
-                      <>
-                        <path d={areaStr} fill="url(#wpmGradient)" />
-                        <path d={pathStr} fill="none" stroke="#22d3ee" strokeWidth="2.5" />
-                        {points.map((ptStr, idx) => {
-                          const [cx, cy] = ptStr.split(',');
-                          return (
-                            <circle
-                              key={idx}
-                              cx={cx}
-                              cy={cy}
-                              r="3"
-                              fill="#22d3ee"
-                              stroke="#0f172a"
-                              strokeWidth="1.5"
-                            />
-                          );
-                        })}
-                      </>
-                    );
-                  })()}
-                </svg>
-              ) : (
-                <div className="flex items-center justify-center h-full text-slate-500 text-xs font-mono">
-                  Test ended before velocity curve could be plotted.
-                </div>
-              )}
-            </div>
-          </div>
+          {/* D3.js Comprehensive Session Telemetry Chart */}
+          <D3SessionChart data={speedHistory} height={220} isLive={false} />
         </div>
       )}
     </div>
