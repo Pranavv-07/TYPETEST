@@ -35,9 +35,47 @@ let memoryBatches: Batch[] = [
   { id: 'b0000000-0000-0000-0000-000000000002', name: 'Batch 2023-27', batchYear: '2023-27', academicYear: '2025-26', status: 'active', createdAt: '2023-08-01' }
 ];
 
+const loadSavedMemoryTrainers = (): Trainer[] => {
+  try {
+    const raw = localStorage.getItem('typetest_memory_trainers');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch {}
+  return [...INITIAL_TRAINERS];
+};
+
+const saveMemoryTrainers = (data: Trainer[]) => {
+  try {
+    localStorage.setItem('typetest_memory_trainers', JSON.stringify(data));
+  } catch {}
+};
+
+const loadSavedMemoryStudents = (): Student[] => {
+  try {
+    const raw = localStorage.getItem('typetest_memory_students');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch {}
+  return [...INITIAL_STUDENTS];
+};
+
+const saveMemoryStudents = (data: Student[]) => {
+  try {
+    localStorage.setItem('typetest_memory_students', JSON.stringify(data));
+  } catch {}
+};
+
 let memoryClasses: ClassRoom[] = [...INITIAL_CLASSES];
-let memoryStudents: Student[] = [...INITIAL_STUDENTS];
-let memoryTrainers: Trainer[] = [...INITIAL_TRAINERS];
+let memoryStudents: Student[] = loadSavedMemoryStudents();
+let memoryTrainers: Trainer[] = loadSavedMemoryTrainers();
 let memoryTests: TypingTest[] = [...INITIAL_TESTS];
 let memorySubmissions: TypingSubmission[] = [...INITIAL_SUBMISSIONS];
 let memoryViolations: ViolationRecord[] = [];
@@ -991,11 +1029,13 @@ export async function createStudent(studentData: Omit<Student, 'id' | 'createdAt
   }
 
   memoryStudents.push(newStudent);
+  saveMemoryStudents(memoryStudents);
   return newStudent;
 }
 
 export async function updateStudent(id: string, updates: Partial<Student>): Promise<void> {
   memoryStudents = memoryStudents.map(s => s.id === id ? { ...s, ...updates } : s);
+  saveMemoryStudents(memoryStudents);
   if (isSupabaseConfigured()) {
     try {
       const dbUpdates: any = {
@@ -1039,6 +1079,7 @@ export async function checkStudentAttemptCount(studentId: string): Promise<numbe
 
 export async function deleteStudent(id: string): Promise<void> {
   memoryStudents = memoryStudents.filter(s => s.id !== id);
+  saveMemoryStudents(memoryStudents);
   if (isSupabaseConfigured()) {
     try {
       await supabase.from('students').delete().eq('id', id);
@@ -1160,6 +1201,7 @@ export async function createTrainer(trainerData: Omit<Trainer, 'id' | 'createdAt
     createdAt: new Date().toISOString()
   };
   memoryTrainers.push(newTrainer);
+  saveMemoryTrainers(memoryTrainers);
 
   if (isSupabaseConfigured()) {
     try {
@@ -1207,6 +1249,7 @@ export async function createTrainer(trainerData: Omit<Trainer, 'id' | 'createdAt
 
 export async function updateTrainer(id: string, updates: Partial<Trainer>): Promise<void> {
   memoryTrainers = memoryTrainers.map(t => t.id === id ? { ...t, ...updates } : t);
+  saveMemoryTrainers(memoryTrainers);
   if (isSupabaseConfigured()) {
     try {
       const dbUpdates: any = {
@@ -1240,6 +1283,7 @@ export async function updateTrainer(id: string, updates: Partial<Trainer>): Prom
 
 export async function deleteTrainer(id: string): Promise<void> {
   memoryTrainers = memoryTrainers.filter(t => t.id !== id);
+  saveMemoryTrainers(memoryTrainers);
   if (isSupabaseConfigured()) {
     try {
       await supabase.from('trainers').delete().eq('id', id);

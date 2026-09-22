@@ -133,8 +133,11 @@ export const AdminPortal: React.FC = () => {
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [editStudentName, setEditStudentName] = useState('');
   const [editStudentRollNo, setEditStudentRollNo] = useState('');
+  const [editStudentEmail, setEditStudentEmail] = useState('');
+  const [editStudentPhone, setEditStudentPhone] = useState('');
   const [editStudentBatch, setEditStudentBatch] = useState('');
   const [editStudentClass, setEditStudentClass] = useState('');
+  const [editStudentStatus, setEditStudentStatus] = useState<'active' | 'inactive' | 'suspended'>('active');
   const [editStudentPassword, setEditStudentPassword] = useState('');
 
   // Add trainer modal
@@ -142,6 +145,8 @@ export const AdminPortal: React.FC = () => {
   const [newTrainerUsername, setNewTrainerUsername] = useState('');
   const [newTrainerName, setNewTrainerName] = useState('');
   const [newTrainerEmail, setNewTrainerEmail] = useState('');
+  const [newTrainerPhone, setNewTrainerPhone] = useState('');
+  const [newTrainerDesignation, setNewTrainerDesignation] = useState('Faculty Trainer');
   const [newTrainerPassword, setNewTrainerPassword] = useState('');
 
   // Edit trainer modal
@@ -149,6 +154,10 @@ export const AdminPortal: React.FC = () => {
   const [editTrainerName, setEditTrainerName] = useState('');
   const [editTrainerUsername, setEditTrainerUsername] = useState('');
   const [editTrainerEmail, setEditTrainerEmail] = useState('');
+  const [editTrainerPhone, setEditTrainerPhone] = useState('');
+  const [editTrainerDesignation, setEditTrainerDesignation] = useState('');
+  const [editTrainerStatus, setEditTrainerStatus] = useState<'active' | 'inactive' | 'suspended'>('active');
+  const [editTrainerAssignedClasses, setEditTrainerAssignedClasses] = useState<string[]>([]);
   const [editTrainerPassword, setEditTrainerPassword] = useState('');
 
   // Reset Attempt Modal
@@ -262,8 +271,11 @@ export const AdminPortal: React.FC = () => {
     await updateStudent(editingStudent.id, {
       name: editStudentName.trim(),
       rollNo: editStudentRollNo.trim().toUpperCase(),
+      email: editStudentEmail.trim() || undefined,
+      phone: editStudentPhone.trim() || undefined,
       batchId: selectedClass?.batchId,
       classId: selectedClass?.id,
+      status: editStudentStatus,
       password: editStudentPassword.trim() || undefined
     });
 
@@ -279,6 +291,8 @@ export const AdminPortal: React.FC = () => {
       username: newTrainerUsername.trim(),
       name: newTrainerName.trim(),
       email: newTrainerEmail.trim(),
+      phone: newTrainerPhone.trim() || undefined,
+      designation: newTrainerDesignation.trim() || 'Faculty Trainer',
       assignedClasses: classes.length > 0 ? [classes[0].id] : [],
       password: newTrainerPassword.trim() || undefined
     });
@@ -286,6 +300,7 @@ export const AdminPortal: React.FC = () => {
     setNewTrainerUsername('');
     setNewTrainerName('');
     setNewTrainerEmail('');
+    setNewTrainerPhone('');
     setNewTrainerPassword('');
     setShowAddTrainerModal(false);
   };
@@ -298,6 +313,10 @@ export const AdminPortal: React.FC = () => {
       name: editTrainerName.trim(),
       username: editTrainerUsername.trim(),
       email: editTrainerEmail.trim(),
+      phone: editTrainerPhone.trim() || undefined,
+      designation: editTrainerDesignation.trim() || 'Faculty Trainer',
+      status: editTrainerStatus,
+      assignedClasses: editTrainerAssignedClasses,
       password: editTrainerPassword.trim() || undefined
     });
 
@@ -849,8 +868,11 @@ export const AdminPortal: React.FC = () => {
                             setEditingStudent(s);
                             setEditStudentName(s.name);
                             setEditStudentRollNo(s.rollNo);
+                            setEditStudentEmail(s.email || '');
+                            setEditStudentPhone(s.phone || '');
                             setEditStudentBatch(s.batch || '2024-28');
                             setEditStudentClass(s.classId || classes[0]?.id || '');
+                            setEditStudentStatus(s.status || 'active');
                             setEditStudentPassword(s.password || '');
                           }}
                           className="p-1 hover:text-cyan-400 transition-colors"
@@ -909,6 +931,10 @@ export const AdminPortal: React.FC = () => {
                         setEditTrainerName(t.name);
                         setEditTrainerUsername(t.username);
                         setEditTrainerEmail(t.email || '');
+                        setEditTrainerPhone(t.phone || '');
+                        setEditTrainerDesignation(t.designation || 'Faculty Trainer');
+                        setEditTrainerStatus(t.status || 'active');
+                        setEditTrainerAssignedClasses(t.assignedClasses || []);
                         setEditTrainerPassword(t.password || '');
                       }}
                       className="p-1 text-slate-400 hover:text-cyan-400 transition-colors"
@@ -1503,58 +1529,263 @@ export const AdminPortal: React.FC = () => {
       {/* EDIT STUDENT MODAL */}
       {editingStudent && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="font-bold text-slate-100 text-sm">Edit Student: {editingStudent.rollNo}</h3>
-              <button onClick={() => setEditingStudent(null)}><X className="w-4 h-4 text-slate-400" /></button>
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <div>
+                <span className="text-[10px] font-mono text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800">
+                  {editingStudent.rollNo}
+                </span>
+                <h3 className="font-bold text-slate-100 text-sm mt-1">Edit Student Profile & Credentials</h3>
+              </div>
+              <button onClick={() => setEditingStudent(null)} className="p-1 rounded-lg hover:bg-slate-800 text-slate-400">
+                <X className="w-4 h-4" />
+              </button>
             </div>
             <form onSubmit={handleSaveStudentEdit} className="space-y-3 text-xs">
-              <div>
-                <label className="font-mono text-slate-400">Full Name</label>
-                <input
-                  required
-                  value={editStudentName}
-                  onChange={e => setEditStudentName(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 mt-1"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-mono text-slate-400">Full Name</label>
+                  <input
+                    required
+                    value={editStudentName}
+                    onChange={e => setEditStudentName(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 mt-1"
+                  />
+                </div>
+                <div>
+                  <label className="font-mono text-slate-400">Roll Number</label>
+                  <input
+                    required
+                    value={editStudentRollNo}
+                    onChange={e => setEditStudentRollNo(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 mt-1 font-mono uppercase"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="font-mono text-slate-400">Roll Number</label>
-                <input
-                  required
-                  value={editStudentRollNo}
-                  onChange={e => setEditStudentRollNo(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 mt-1"
-                />
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-mono text-slate-400">Email Address</label>
+                  <input
+                    type="email"
+                    placeholder="student@institution.edu"
+                    value={editStudentEmail}
+                    onChange={e => setEditStudentEmail(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 mt-1"
+                  />
+                </div>
+                <div>
+                  <label className="font-mono text-slate-400">Phone Number</label>
+                  <input
+                    type="tel"
+                    placeholder="+91 98765 43210"
+                    value={editStudentPhone}
+                    onChange={e => setEditStudentPhone(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 mt-1"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="font-mono text-slate-400">Classroom</label>
-                <select
-                  value={editStudentClass}
-                  onChange={e => setEditStudentClass(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 mt-1"
-                >
-                  {classes.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-mono text-slate-400">Assigned Classroom</label>
+                  <select
+                    value={editStudentClass}
+                    onChange={e => setEditStudentClass(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 mt-1"
+                  >
+                    {classes.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="font-mono text-slate-400">Account Status</label>
+                  <select
+                    value={editStudentStatus}
+                    onChange={e => setEditStudentStatus(e.target.value as any)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 mt-1"
+                  >
+                    <option value="active">Active (Access Granted)</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="suspended">Suspended (Blocked)</option>
+                  </select>
+                </div>
               </div>
+
               <div>
                 <label className="font-mono text-slate-400">Reset Password</label>
                 <input
                   type="password"
-                  placeholder="New password or leave unchanged"
+                  placeholder="Enter new password or leave empty to keep unchanged"
                   value={editStudentPassword}
                   onChange={e => setEditStudentPassword(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 mt-1"
                 />
+                <p className="text-[10px] text-slate-500 mt-1 font-mono">
+                  Default login passwords supported: Roll number, 1234, or student123
+                </p>
               </div>
-              <button
-                type="submit"
-                className="w-full py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-xl"
-              >
-                Update Student
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingStudent(null)}
+                  className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-xl"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT TRAINER MODAL */}
+      {editingTrainer && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <div>
+                <span className="text-[10px] font-mono text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800">
+                  @{editingTrainer.username}
+                </span>
+                <h3 className="font-bold text-slate-100 text-sm mt-1">Edit Faculty Trainer / Proctor</h3>
+              </div>
+              <button onClick={() => setEditingTrainer(null)} className="p-1 rounded-lg hover:bg-slate-800 text-slate-400">
+                <X className="w-4 h-4" />
               </button>
+            </div>
+            <form onSubmit={handleSaveTrainerEdit} className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-mono text-slate-400">Full Name</label>
+                  <input
+                    required
+                    value={editTrainerName}
+                    onChange={e => setEditTrainerName(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 mt-1"
+                  />
+                </div>
+                <div>
+                  <label className="font-mono text-slate-400">Username</label>
+                  <input
+                    required
+                    value={editTrainerUsername}
+                    onChange={e => setEditTrainerUsername(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 mt-1 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-mono text-slate-400">Email Address</label>
+                  <input
+                    type="email"
+                    required
+                    value={editTrainerEmail}
+                    onChange={e => setEditTrainerEmail(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 mt-1"
+                  />
+                </div>
+                <div>
+                  <label className="font-mono text-slate-400">Phone Number</label>
+                  <input
+                    type="tel"
+                    placeholder="+91 98765 43210"
+                    value={editTrainerPhone}
+                    onChange={e => setEditTrainerPhone(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 mt-1"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-mono text-slate-400">Designation / Role</label>
+                  <input
+                    value={editTrainerDesignation}
+                    onChange={e => setEditTrainerDesignation(e.target.value)}
+                    placeholder="e.g. Lead Faculty Mentor"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 mt-1"
+                  />
+                </div>
+                <div>
+                  <label className="font-mono text-slate-400">Account Status</label>
+                  <select
+                    value={editTrainerStatus}
+                    onChange={e => setEditTrainerStatus(e.target.value as any)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 mt-1"
+                  >
+                    <option value="active">Active (Access Granted)</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="suspended">Suspended</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="font-mono text-slate-400">Assigned Classrooms / Batches</label>
+                <div className="grid grid-cols-2 gap-2 mt-1 max-h-32 overflow-y-auto p-2 bg-slate-950 border border-slate-800 rounded-xl">
+                  {classes.map(c => {
+                    const isChecked = editTrainerAssignedClasses.includes(c.id);
+                    return (
+                      <label key={c.id} className="flex items-center gap-2 text-[11px] text-slate-300 hover:text-cyan-400 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={e => {
+                            if (e.target.checked) {
+                              setEditTrainerAssignedClasses([...editTrainerAssignedClasses, c.id]);
+                            } else {
+                              setEditTrainerAssignedClasses(editTrainerAssignedClasses.filter(id => id !== c.id));
+                            }
+                          }}
+                          className="rounded border-slate-700 bg-slate-900 text-cyan-500"
+                        />
+                        <span className="truncate">{c.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label className="font-mono text-slate-400">Reset Access Password</label>
+                <input
+                  type="password"
+                  placeholder="Enter new password or leave empty to keep unchanged"
+                  value={editTrainerPassword}
+                  onChange={e => setEditTrainerPassword(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 mt-1"
+                />
+                <p className="text-[10px] text-slate-500 mt-1 font-mono">
+                  Default trainer passwords supported: trainer123, trainer@123, or 1234
+                </p>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingTrainer(null)}
+                  className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-xl"
+                >
+                  Save Changes
+                </button>
+              </div>
             </form>
           </div>
         </div>

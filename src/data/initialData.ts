@@ -15,9 +15,9 @@ export const INITIAL_TRAINERS: Trainer[] = [
   },
   {
     id: 'trn-2',
-    username: 'proctor_sarah',
-    name: 'Dr. Sarah Connor (Head Mentor)',
-    email: 'sarah.connor@testtype.edu',
+    username: 'pavan_b',
+    name: 'Pavan B (Lead Faculty Mentor)',
+    email: 'pavan.lead@testtype.edu',
     assignedClasses: [''],
     createdAt: '2025-01-15'
   }

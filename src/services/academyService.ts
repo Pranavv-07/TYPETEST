@@ -243,9 +243,9 @@ export function recordStudentLessonAttempt(
   // Save attempt to history
   saveAttemptToHistory(studentId, fullAttempt);
 
-  // Check mastery criteria
+  // Check mastery criteria (Strict min 95% accuracy requirement)
   const isAssessment = attempt.phase === 'assessment';
-  const minAcc = targetLesson?.minAccuracy || 95;
+  const minAcc = Math.max(95, targetLesson?.minAccuracy || 95);
   const minWpm = targetLesson?.minWpm || 15;
   const meetsCriteria = attempt.accuracy >= minAcc && attempt.wpm >= minWpm;
   const newlyMastered = isAssessment && meetsCriteria;

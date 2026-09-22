@@ -18,6 +18,7 @@ import { LessonView } from './LessonView';
 import { DiagnosticModal } from './DiagnosticModal';
 import { WeakKeysPracticeModal } from './WeakKeysPracticeModal';
 import { AcademyCertificateModal } from './AcademyCertificateModal';
+import { KEYBOARD_BADGES, KeyboardBadge } from '../../data/achievementBadges';
 import {
   GraduationCap,
   Sparkles,
@@ -36,7 +37,8 @@ import {
   ChevronUp,
   LayoutGrid,
   ShieldCheck,
-  BookOpen
+  BookOpen,
+  Keyboard
 } from 'lucide-react';
 
 interface AcademyDashboardProps {
@@ -384,6 +386,95 @@ export const AcademyDashboard: React.FC<AcademyDashboardProps> = ({
 
       {/* VISUAL CURRICULUM ROADMAP (LEVELS 1 - 7) */}
       <div className="space-y-4">
+        {/* KEYBOARD EVOLUTION & ACHIEVEMENT BADGES */}
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                <Keyboard className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-lg font-black text-slate-100 flex items-center gap-2">
+                  <span>Keyboard Evolution Badges</span>
+                  <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 text-[10px] font-mono border border-amber-500/20">
+                    7 Hardware Tiers
+                  </span>
+                </h2>
+                <p className="text-xs text-slate-400">
+                  Unlock specialized mechanical hardware badges as you conquer each curriculum level.
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <span className="text-xs font-mono text-slate-400">
+                Unlocked:{' '}
+                <strong className="text-amber-400">
+                  {KEYBOARD_BADGES.filter(b => {
+                    const lvl = curriculum.levels.find(l => l.id === b.levelNumber);
+                    return lvl && lvl.lessons.every(l => profile.lessonProgress[l.id]?.status === 'mastered');
+                  }).length}
+                </strong>{' '}
+                / 7 Badges
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
+            {KEYBOARD_BADGES.map(badge => {
+              const lvl = curriculum.levels.find(l => l.id === badge.levelNumber);
+              const isUnlocked = lvl ? lvl.lessons.every(l => profile.lessonProgress[l.id]?.status === 'mastered') : false;
+              const lessonsCompleted = lvl ? lvl.lessons.filter(l => profile.lessonProgress[l.id]?.status === 'mastered').length : 0;
+              const totalLessons = lvl ? lvl.lessons.length : 0;
+
+              return (
+                <div
+                  key={badge.id}
+                  className={`relative p-4 rounded-2xl border transition-all duration-300 flex flex-col justify-between ${
+                    isUnlocked
+                      ? `${badge.bgGlow} ${badge.accentBorder} bg-opacity-80`
+                      : 'bg-slate-950/70 border-slate-800/80 opacity-60 hover:opacity-80'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-start justify-between">
+                      <span className="text-3xl filter drop-shadow-sm">{badge.icon}</span>
+                      <span
+                        className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full uppercase border ${
+                          isUnlocked
+                            ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                            : 'bg-slate-800 border-slate-700 text-slate-500'
+                        }`}
+                      >
+                        {isUnlocked ? 'Unlocked' : `Level ${badge.levelNumber}`}
+                      </span>
+                    </div>
+
+                    <h4 className="font-bold text-slate-100 text-xs mt-2.5 line-clamp-1">
+                      {badge.name}
+                    </h4>
+                    <p className="text-[11px] text-amber-300 font-medium mt-0.5 font-mono">
+                      {badge.keyboardType}
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-1.5 line-clamp-2 leading-relaxed">
+                      {badge.description}
+                    </p>
+                  </div>
+
+                  <div className="mt-3 pt-2.5 border-t border-slate-800/60 flex items-center justify-between text-[10px] font-mono">
+                    <span className="text-slate-500">Switch: {badge.switchType}</span>
+                    <span
+                      className="font-bold uppercase"
+                      style={{ color: badge.color }}
+                    >
+                      {badge.rarity}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <LayoutGrid className="w-5 h-5 text-amber-400" />
