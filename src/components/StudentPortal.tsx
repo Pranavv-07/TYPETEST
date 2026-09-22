@@ -6,6 +6,7 @@ import { CertificateModal } from './CertificateModal';
 import { LeaderboardModal } from './LeaderboardModal';
 import { StudentDashboard } from './StudentDashboard';
 import { StudentLeaderboard } from './StudentLeaderboard';
+import { PerformanceOverTimeChart } from './PerformanceOverTimeChart';
 import {
   GraduationCap,
   Play,
@@ -387,8 +388,11 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
 
       {/* TAB 2: MY SUBMISSION HISTORY */}
       {activeTab === 'history' && (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-          <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+        <div className="space-y-6">
+          <PerformanceOverTimeChart submissions={studentSubmissions} />
+
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between">
             <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
               Verified Institutional Attempts Log
@@ -440,6 +444,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
               </table>
             </div>
           )}
+          </div>
         </div>
       )}
 

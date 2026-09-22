@@ -5,6 +5,7 @@ import { MONKEYTYPE_WORDS } from '../data/initialData';
 import { soundController } from '../utils/audio';
 import confetti from 'canvas-confetti';
 import { D3SessionChart } from './D3SessionChart';
+import { MechanicalKeyboard } from './MechanicalKeyboard';
 import {
   RotateCcw,
   Clock,
@@ -1006,6 +1007,11 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
             <D3SessionChart data={speedHistory} height={170} isLive={true} />
           </div>
         )}
+
+        {/* Interactive Mechanical Keyboard with real-time keypresses and switch profiles */}
+        <div className="w-full pt-2">
+          <MechanicalKeyboard interactive={true} compact={false} />
+        </div>
         </>
       ) : (
         /* Results Scorecard (Typing.com & Monkeytype style) */

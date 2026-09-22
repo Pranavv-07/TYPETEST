@@ -2,6 +2,7 @@ import { CheckCircle2 } from "lucide-react";
 import React, { useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { Trophy, Clock, Target, Zap, Activity, Calendar, Flame } from 'lucide-react';
+import { PerformanceOverTimeChart } from './PerformanceOverTimeChart';
 
 export const StudentDashboard: React.FC = () => {
   const { currentUser, submissions, students } = useApp();
@@ -108,6 +109,9 @@ export const StudentDashboard: React.FC = () => {
           <div className="text-3xl font-bold text-slate-800">{stats.testsCompleted}</div>
         </div>
       </div>
+
+      {/* Recharts Performance Over Time line chart */}
+      <PerformanceOverTimeChart submissions={mySubmissions} />
     </div>
   );
 };

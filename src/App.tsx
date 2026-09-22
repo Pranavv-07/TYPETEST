@@ -36,7 +36,7 @@ const MainLayout: React.FC = () => {
     if (activeAssessment) return;
 
     if (!currentUser) {
-      if (currentView !== 'arena' && currentView !== 'login') {
+      if (currentView !== 'arena' && currentView !== 'login' && currentView !== 'multiplayer') {
         setCurrentView('login');
       }
       return;
@@ -121,7 +121,19 @@ const MainLayout: React.FC = () => {
         )}
 
         {currentView === 'multiplayer' && (
-          <MultiplayerArena onExit={() => setCurrentView('student')} />
+          <MultiplayerArena
+            onExit={() =>
+              setCurrentView(
+                currentUser
+                  ? currentUser.role === 'trainer'
+                    ? 'trainer'
+                    : currentUser.role === 'admin'
+                    ? 'admin'
+                    : 'student'
+                  : 'arena'
+              )
+            }
+          />
         )}
 
         {currentView === 'admin' && currentUser?.role === 'admin' && (

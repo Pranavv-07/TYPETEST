@@ -183,6 +183,8 @@ export interface TypingSubmission {
   status?: 'in_progress' | 'submitted' | 'abandoned' | 'disqualified' | 'reset';
 }
 
+export type TestSubmission = TypingSubmission;
+
 export interface StudentCertificate {
   id: string;
   studentId: string;

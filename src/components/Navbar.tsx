@@ -12,11 +12,12 @@ import {
   Sparkles,
   LayoutDashboard,
   PlaySquare,
+  Swords,
 } from 'lucide-react';
 
 interface NavbarProps {
-  currentView: 'arena' | 'trainer' | 'student' | 'admin' | 'login';
-  setCurrentView: (view: 'arena' | 'trainer' | 'student' | 'admin' | 'login') => void;
+  currentView: 'arena' | 'trainer' | 'student' | 'admin' | 'login' | 'multiplayer';
+  setCurrentView: (view: 'arena' | 'trainer' | 'student' | 'admin' | 'login' | 'multiplayer') => void;
   onOpenLoginModal?: () => void;
 }
 
@@ -120,6 +121,19 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <PlaySquare className="w-3.5 h-3.5" />
               <span>Typing Arena</span>
+            </button>
+
+            {/* Multiplayer Arena */}
+            <button
+              onClick={() => setCurrentView('multiplayer')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                currentView === 'multiplayer'
+                  ? 'bg-amber-500/15 text-amber-300 border border-amber-500/40 shadow-sm'
+                  : 'text-amber-400/80 hover:text-amber-300 hover:bg-slate-900'
+              }`}
+            >
+              <Swords className="w-3.5 h-3.5 text-amber-400" />
+              <span>Multiplayer</span>
             </button>
           </nav>
         </div>
