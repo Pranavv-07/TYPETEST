@@ -332,6 +332,8 @@ export interface StudentLessonProgress {
   lastAttemptDate?: string;
   masteredAt?: string;
   lockReason?: string;
+  guidedCompleted?: boolean;
+  conceptRead?: boolean;
 }
 
 export interface StudentAcademyProfile {

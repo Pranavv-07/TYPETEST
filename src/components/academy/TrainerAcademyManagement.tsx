@@ -34,19 +34,22 @@ import {
   Search,
   CheckCircle2,
   BarChart3,
-  Calendar
+  Calendar,
+  Award
 } from 'lucide-react';
 
 interface TrainerAcademyManagementProps {
   classes: ClassRoom[];
   students: Student[];
   trainerId: string;
+  onOpenCertificateModal?: () => void;
 }
 
 export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> = ({
   classes,
   students,
   trainerId,
+  onOpenCertificateModal
 }) => {
   const [activeTab, setActiveTab] = useState<'curriculum' | 'students' | 'assignments'>('curriculum');
   const [curriculum, setCurriculum] = useState<AcademyCurriculum>(() => getActiveCurriculum());
@@ -192,13 +195,25 @@ export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> =
           </p>
         </div>
 
-        <button
-          onClick={() => setShowAssignModal(true)}
-          className="px-5 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-amber-500/20 flex items-center gap-2 shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Assign to Class</span>
-        </button>
+        <div className="flex items-center gap-2.5 shrink-0">
+          {onOpenCertificateModal && (
+            <button
+              onClick={onOpenCertificateModal}
+              className="px-4 py-2.5 rounded-2xl bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/30 font-bold text-xs transition-all flex items-center gap-2"
+            >
+              <Award className="w-4 h-4 text-amber-400" />
+              <span>Issue Certificate</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => setShowAssignModal(true)}
+            className="px-5 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-amber-500/20 flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Assign to Class</span>
+          </button>
+        </div>
       </div>
 
       {/* Tabs Row */}

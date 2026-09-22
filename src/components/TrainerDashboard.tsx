@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import {
   useApp } from '../context/AppContext';
-import { TypingTest, TestCategory, ProgrammingLanguage, TestReport, Student } from '../types';
+import { TypingTest, TestCategory, ProgrammingLanguage, TestReport, Student, StudentCertificate } from '../types';
 import { LeaderboardModal } from './LeaderboardModal';
 import { ReportModal } from './ReportModal';
 import { CertificateGeneratorModal } from './CertificateGeneratorModal';
+import { CertificateModal } from './CertificateModal';
 import { TrainerAcademyManagement } from './academy/TrainerAcademyManagement';
 import {
   Users,
@@ -54,6 +55,7 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
     submissions,
     reports,
     certificates,
+    addCertificate,
     generateTestReport,
     deleteReport,
     resetStudentAttempt,
@@ -62,6 +64,9 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
 
   const [activeTab, setActiveTab] = useState<'monitoring' | 'tests' | 'reports' | 'classes' | 'certificates' | 'academy'>('monitoring');
   const [isCertModalOpen, setIsCertModalOpen] = useState(false);
+  const [selectedViewCert, setSelectedViewCert] = useState<StudentCertificate | null>(null);
+  const [certSearchQuery, setCertSearchQuery] = useState('');
+  const [certFilterType, setCertFilterType] = useState<'all' | 'pr' | 'master'>('all');
 
   // Modal states
   const [showCreateClassModal, setShowCreateClassModal] = useState(false);
@@ -327,6 +332,18 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
         >
           <GraduationCap className="w-4 h-4 text-amber-400" />
           <span>Typing Academy Curriculum</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('certificates')}
+          className={`pb-3 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all ${
+            activeTab === 'certificates'
+              ? 'border-indigo-400 text-indigo-400 font-bold'
+              : 'border-transparent text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Award className="w-4 h-4 text-indigo-400" />
+          <span>Certificates & Credentials ({certificates.length})</span>
         </button>
       </div>
 
@@ -1293,79 +1310,210 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
 
       {activeTab === 'certificates' && (
         <div className="space-y-6">
+          {/* Top Bar: Title & Action */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <button onClick={() => setIsCertModalOpen(true)} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-2 transition-colors shrink-0">
-              <Plus size={18} /> Custom Certificate
-            </button>
             <div>
-              <h2 className="text-xl font-bold text-slate-100">Certificate Verification & Issuance</h2>
-              <p className="text-sm text-slate-400">View and verify student assessment certificates.</p>
-            </div>
-            <div className="flex gap-2 w-full sm:w-auto">
-              <div className="relative flex-1 sm:w-64">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-                <input
-                  type="text"
-                  placeholder="Verify Code (e.g. V-ABC123)"
-                  className="w-full pl-10 pr-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm focus:outline-none focus:border-indigo-500 text-slate-200"
-                />
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-amber-400 font-bold">
+                  Mentor Credential Module
+                </span>
+                <span className="text-[10px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded-full font-bold">
+                  Pavan B (Lead Mentor)
+                </span>
               </div>
-              <button className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-2 transition-colors shrink-0">
-                <CheckCircle2 size={18} /> Verify
+              <h2 className="text-xl sm:text-2xl font-black text-slate-100 mt-1">
+                Official Certificate Registry & Manual Issuance
+              </h2>
+              <p className="text-xs text-slate-400">
+                Generate official credentials for any candidate at anytime, verify authenticity, and track personal record milestones.
+              </p>
+            </div>
+
+            <button
+              onClick={() => setIsCertModalOpen(true)}
+              className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black rounded-2xl flex items-center gap-2 transition-all shadow-lg shadow-amber-500/20 text-xs shrink-0"
+            >
+              <Plus size={16} />
+              <span>Issue Certificate for Anyone</span>
+            </button>
+          </div>
+
+          {/* Quick Metrics Strip */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl">
+              <span className="text-[10px] font-mono text-slate-400 uppercase block">Total Credentials</span>
+              <span className="text-2xl font-black font-mono text-slate-100 mt-0.5 block">{certificates.length}</span>
+              <span className="text-[11px] text-slate-500">Issued & registered</span>
+            </div>
+
+            <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl">
+              <span className="text-[10px] font-mono text-amber-400 uppercase block">Personal Records</span>
+              <span className="text-2xl font-black font-mono text-amber-300 mt-0.5 block">
+                {certificates.filter(c => c.achievementTitle.toLowerCase().includes('personal record')).length}
+              </span>
+              <span className="text-[11px] text-slate-500">Milestone certificates</span>
+            </div>
+
+            <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl">
+              <span className="text-[10px] font-mono text-cyan-400 uppercase block">Master Level (60+ WPM)</span>
+              <span className="text-2xl font-black font-mono text-cyan-300 mt-0.5 block">
+                {certificates.filter(c => c.wpm >= 60).length}
+              </span>
+              <span className="text-[11px] text-slate-500">Advanced typists</span>
+            </div>
+
+            <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl">
+              <span className="text-[10px] font-mono text-emerald-400 uppercase block">Authenticated</span>
+              <span className="text-2xl font-black font-mono text-emerald-300 mt-0.5 block">
+                {certificates.filter(c => c.status === 'valid').length}
+              </span>
+              <span className="text-[11px] text-slate-500">Active valid status</span>
+            </div>
+          </div>
+
+          {/* Search, Filter & Verification Bar */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900 border border-slate-800 p-3 rounded-2xl">
+            <div className="relative w-full sm:w-80">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+              <input
+                type="text"
+                placeholder="Search candidate, roll no, or code..."
+                value={certSearchQuery}
+                onChange={e => setCertSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs focus:outline-none focus:border-amber-500 text-slate-200"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto">
+              <button
+                onClick={() => setCertFilterType('all')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${
+                  certFilterType === 'all'
+                    ? 'bg-amber-500 text-slate-950 font-bold'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                }`}
+              >
+                All ({certificates.length})
+              </button>
+              <button
+                onClick={() => setCertFilterType('pr')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${
+                  certFilterType === 'pr'
+                    ? 'bg-amber-500 text-slate-950 font-bold'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                }`}
+              >
+                🏆 PR Milestones
+              </button>
+              <button
+                onClick={() => setCertFilterType('master')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${
+                  certFilterType === 'master'
+                    ? 'bg-amber-500 text-slate-950 font-bold'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                }`}
+              >
+                Master (60+ WPM)
               </button>
             </div>
           </div>
 
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-            <div className="p-4 border-b border-slate-800 bg-slate-800/20 flex gap-4">
-              <div className="flex items-center gap-2 text-slate-400 text-sm">
-                <Award size={16} className="text-indigo-400" />
-                <span>Auto-issued upon passing ({">"}90% accuracy, {">"}20 WPM)</span>
-              </div>
-            </div>
+          {/* Certificates Table */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-slate-800/50 border-b border-slate-700 text-xs uppercase tracking-wider text-slate-400">
-                    <th className="p-4 font-medium">Student</th>
-                    <th className="p-4 font-medium">Achievement</th>
-                    <th className="p-4 font-medium">Test</th>
-                    <th className="p-4 font-medium">Metrics</th>
-                    <th className="p-4 font-medium">Verify Code</th>
+                  <tr className="bg-slate-950/80 border-b border-slate-800 text-[11px] font-mono uppercase tracking-wider text-slate-400">
+                    <th className="p-4 font-semibold">Candidate</th>
+                    <th className="p-4 font-semibold">Achievement Credential</th>
+                    <th className="p-4 font-semibold">Assessment Exam</th>
+                    <th className="p-4 font-semibold">Metrics</th>
+                    <th className="p-4 font-semibold">Verification</th>
+                    <th className="p-4 font-semibold text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800">
-
-                  {certificates.map(cert => (
-                    <tr key={cert.id} className="hover:bg-slate-800/20 transition-colors">
-                      <td className="p-4">
-                        <div className="font-medium text-slate-200">{cert.studentName}</div>
-                        <div className="text-xs text-slate-500">{cert.rollNo}</div>
-                      </td>
-                      <td className="p-4 text-indigo-400 font-medium text-sm">
-                        {cert.achievementTitle}
-                      </td>
-                      <td className="p-4 text-slate-300 text-sm">
-                        {cert.testTitle}
-                      </td>
-                      <td className="p-4">
-                        <div className="flex gap-2 text-xs">
-                          <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 rounded border border-emerald-500/20">{cert.wpm} WPM</span>
-                          <span className="px-2 py-0.5 bg-blue-500/10 text-blue-400 rounded border border-blue-500/20">{cert.accuracy}% Acc</span>
-                        </div>
-                      </td>
-                      <td className="p-4 font-mono text-xs text-slate-400">
-                        {cert.verificationCode}
-                      </td>
-                    </tr>
-                  ))}
+                <tbody className="divide-y divide-slate-800 text-xs">
+                  {certificates
+                    .filter(cert => {
+                      if (certFilterType === 'pr') {
+                        if (!cert.achievementTitle.toLowerCase().includes('personal record')) return false;
+                      }
+                      if (certFilterType === 'master') {
+                        if (cert.wpm < 60) return false;
+                      }
+                      if (certSearchQuery.trim()) {
+                        const q = certSearchQuery.toLowerCase();
+                        return (
+                          cert.studentName.toLowerCase().includes(q) ||
+                          cert.rollNo.toLowerCase().includes(q) ||
+                          cert.achievementTitle.toLowerCase().includes(q) ||
+                          cert.testTitle.toLowerCase().includes(q) ||
+                          cert.verificationCode.toLowerCase().includes(q)
+                        );
+                      }
+                      return true;
+                    })
+                    .map(cert => {
+                      const isPR = cert.achievementTitle.toLowerCase().includes('personal record');
+                      return (
+                        <tr key={cert.id} className="hover:bg-slate-800/30 transition-colors">
+                          <td className="p-4">
+                            <div className="font-bold text-slate-100 flex items-center gap-1.5">
+                              <span>{cert.studentName}</span>
+                              {isPR && <Trophy className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
+                            </div>
+                            <div className="text-[11px] font-mono text-slate-400 mt-0.5">{cert.rollNo}</div>
+                          </td>
+                          <td className="p-4">
+                            <div className={`font-semibold ${isPR ? 'text-amber-400 font-bold' : 'text-indigo-300'}`}>
+                              {cert.achievementTitle}
+                            </div>
+                            <div className="text-[10px] text-slate-500 mt-0.5">
+                              Issued by {cert.issuingAuthority || 'Pavan B, CSE Dept'}
+                            </div>
+                          </td>
+                          <td className="p-4 text-slate-300 font-medium">
+                            {cert.testTitle}
+                          </td>
+                          <td className="p-4 font-mono">
+                            <div className="flex gap-1.5">
+                              <span className="px-2 py-0.5 bg-cyan-500/10 text-cyan-400 rounded-lg border border-cyan-500/20 font-bold">
+                                {cert.wpm} WPM
+                              </span>
+                              <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 rounded-lg border border-emerald-500/20 font-bold">
+                                {cert.accuracy}%
+                              </span>
+                            </div>
+                          </td>
+                          <td className="p-4 font-mono text-[11px]">
+                            <span className="px-2 py-1 bg-slate-950 text-cyan-400 border border-slate-800 rounded-lg block w-max font-bold">
+                              {cert.verificationCode}
+                            </span>
+                            <span className="text-[10px] text-slate-500 block mt-0.5">
+                              {cert.issuedAt ? new Date(cert.issuedAt).toLocaleDateString() : 'Active'}
+                            </span>
+                          </td>
+                          <td className="p-4 text-right">
+                            <button
+                              onClick={() => setSelectedViewCert(cert)}
+                              className="px-3 py-1.5 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/30 rounded-xl font-bold text-xs transition-colors inline-flex items-center gap-1.5"
+                            >
+                              <Award className="w-3.5 h-3.5" />
+                              <span>View & Print</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
 
                   {certificates.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="p-12 text-center">
-                        <Award size={32} className="mx-auto text-slate-600 mb-3" />
-                        <p className="text-slate-400 font-medium">No certificates issued yet</p>
-                        <p className="text-slate-500 text-sm mt-1">Certificates are generated automatically when students pass assessments.</p>
+                      <td colSpan={6} className="p-12 text-center">
+                        <Award size={36} className="mx-auto text-slate-600 mb-3" />
+                        <p className="text-slate-300 font-bold text-sm">No certificates issued yet</p>
+                        <p className="text-slate-500 text-xs mt-1">
+                          Certificates are generated automatically when a student beats their personal record or completes a test, or manually via the mentor generator.
+                        </p>
                       </td>
                     </tr>
                   )}
@@ -1382,17 +1530,27 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
           classes={classes}
           students={students}
           trainerId={currentUser?.id || 'trainer_1'}
+          onOpenCertificateModal={() => setIsCertModalOpen(true)}
         />
       )}
 
+      {/* MENTOR CERTIFICATE GENERATOR MODAL */}
       {isCertModalOpen && (
         <CertificateGeneratorModal 
           onClose={() => setIsCertModalOpen(false)} 
           students={students} 
-          onGenerate={(cert) => {
-            // Ideally we'd have an addCertificate in AppContext, but we can just mutate state for the prototype or push it
-            console.log("Generated cert:", cert);
+          onGenerate={async (cert) => {
+            await addCertificate(cert);
           }} 
+        />
+      )}
+
+      {/* OFFICIAL VIEW / PRINT CERTIFICATE MODAL */}
+      {selectedViewCert && (
+        <CertificateModal
+          certificate={selectedViewCert}
+          isOpen={Boolean(selectedViewCert)}
+          onClose={() => setSelectedViewCert(null)}
         />
       )}
     </div>

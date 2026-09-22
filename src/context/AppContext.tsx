@@ -53,7 +53,8 @@ import {
   startTestAttemptAtomic,
   checkpointAttempt as apiCheckpointAttempt,
   recordViolation as apiRecordViolation,
-  submitTestAttemptAtomic
+  submitTestAttemptAtomic,
+  addMemoryCertificate
 } from '../services/supabaseService';
 import { soundController } from '../utils/audio';
 
@@ -120,6 +121,17 @@ interface AppContextType {
   deleteReport: (reportId: string) => void;
   getStudentCertificates: (studentId: string) => StudentCertificate[];
   downloadReportCSV: (report: TestReport) => void;
+  addCertificate: (cert: StudentCertificate) => Promise<void>;
+  issueManualCertificate: (certData: {
+    studentId?: string;
+    studentName: string;
+    rollNo?: string;
+    achievementTitle: string;
+    wpm: number;
+    accuracy: number;
+    testTitle: string;
+    issuingAuthority?: string;
+  }) => Promise<StudentCertificate>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -709,6 +721,59 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return certificates.filter(c => c.studentId === studentId);
   };
 
+  const addCertificate = async (cert: StudentCertificate) => {
+    setCertificates(prev => [cert, ...prev.filter(c => c.id !== cert.id)]);
+    addMemoryCertificate(cert);
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('certificates').insert([{
+          id: cert.id,
+          student_id: cert.studentId,
+          certificate_number: cert.certificateNumber,
+          verification_code: cert.verificationCode,
+          score: cert.wpm,
+          accuracy: cert.accuracy,
+          achievement_title: cert.achievementTitle,
+          issued_at: cert.issuedAt,
+          status: cert.status
+        }]);
+      } catch (e) {
+        console.warn('Could not insert certificate to Supabase:', e);
+      }
+    }
+  };
+
+  const issueManualCertificate = async (certData: {
+    studentId?: string;
+    studentName: string;
+    rollNo?: string;
+    achievementTitle: string;
+    wpm: number;
+    accuracy: number;
+    testTitle: string;
+    issuingAuthority?: string;
+  }): Promise<StudentCertificate> => {
+    const certNumber = `TYPETEST-CERT-${new Date().getFullYear()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    const verifyCode = `V-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    const newCert: StudentCertificate = {
+      id: `cert-manual-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      studentId: certData.studentId || `ext-${Date.now()}`,
+      studentName: certData.studentName,
+      rollNo: certData.rollNo || 'EXT-VERIFIED',
+      achievementTitle: certData.achievementTitle,
+      wpm: certData.wpm,
+      accuracy: certData.accuracy,
+      testTitle: certData.testTitle,
+      issuedAt: new Date().toISOString(),
+      issuingAuthority: certData.issuingAuthority || 'Pavan B (Lead Mentor & Proctor), CSE Dept',
+      verificationCode: verifyCode,
+      certificateNumber: certNumber,
+      status: 'valid'
+    };
+    await addCertificate(newCert);
+    return newCert;
+  };
+
   const downloadReportCSV = (report: TestReport) => {
     const headers = [
       'Rank',
@@ -807,7 +872,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         generateTestReport,
         deleteReport,
         getStudentCertificates,
-        downloadReportCSV
+        downloadReportCSV,
+        addCertificate,
+        issueManualCertificate
       }}
     >
       {children}

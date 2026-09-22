@@ -120,7 +120,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-100">{currentUser?.name}</h1>
           <p className="text-xs text-slate-400">
-            Enrolled in <strong className="text-slate-200">{studentClass?.name}</strong> • Mentor: Prof. Alex Vance
+            Enrolled in <strong className="text-slate-200">{studentClass?.name}</strong> • Mentor: Pavan B
           </p>
         </div>
 

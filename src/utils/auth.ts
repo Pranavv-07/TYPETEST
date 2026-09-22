@@ -48,9 +48,9 @@ export function authenticateCredentials(
     const defaultTrainer: User = {
       id: 'trn-1',
       username: 'trainer',
-      name: 'Prof. Alex Vance (Proctor)',
+      name: 'Pavan B',
       role: 'trainer',
-      email: 'trainer@testtype.edu'
+      email: 'pavan.b@testtype.edu'
     };
     const session = saveSession(defaultTrainer);
     return { success: true, user: defaultTrainer, token: session.token };

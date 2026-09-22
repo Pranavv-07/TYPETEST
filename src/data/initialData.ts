@@ -1,4 +1,4 @@
-import { Student, Trainer, ClassRoom, TypingTest, TypingSubmission } from '../types';
+import { Student, Trainer, ClassRoom, TypingTest, TypingSubmission, StudentCertificate } from '../types';
 
 // Pre-loaded roster (Empty by default: all examinees are managed via Admin or Supabase)
 export const INITIAL_STUDENTS: Student[] = [];
@@ -8,8 +8,8 @@ export const INITIAL_TRAINERS: Trainer[] = [
   {
     id: 'trn-1',
     username: 'trainer',
-    name: 'Prof. Alex Vance (Proctor)',
-    email: 'trainer@testtype.edu',
+    name: 'Pavan B',
+    email: 'pavan.b@testtype.edu',
     assignedClasses: ['', '', ''],
     createdAt: '2025-01-01'
   },
@@ -220,6 +220,40 @@ int main() {
 
 // Initial Submissions (Empty by default: all submissions are recorded dynamically during exams)
 export const INITIAL_SUBMISSIONS: TypingSubmission[] = [];
+
+// Initial Seed Certificates
+export const INITIAL_CERTIFICATES: StudentCertificate[] = [
+  {
+    id: 'cert-seed-1',
+    studentId: 'student-1',
+    studentName: 'Aarav Sharma',
+    rollNo: '2024-CSE-001',
+    achievementTitle: '🏆 Personal Record Achievement (58 WPM Milestone)',
+    wpm: 58,
+    accuracy: 97,
+    testTitle: 'Technical Typing Benchmark Exam',
+    issuedAt: '2025-02-15T10:30:00.000Z',
+    issuingAuthority: 'Pavan B (Lead Mentor & Proctor), CSE Dept',
+    verificationCode: 'V-PR58ARV',
+    certificateNumber: 'TYPETEST-CERT-2025-ARV01',
+    status: 'valid'
+  },
+  {
+    id: 'cert-seed-2',
+    studentId: 'student-2',
+    studentName: 'Ananya Verma',
+    rollNo: '2024-CSE-002',
+    achievementTitle: 'Master Assessment Certification',
+    wpm: 65,
+    accuracy: 98,
+    testTitle: 'Story: The Silicon Dawn',
+    issuedAt: '2025-02-20T14:15:00.000Z',
+    issuingAuthority: 'Pavan B (Lead Mentor & Proctor), CSE Dept',
+    verificationCode: 'V-MST65ANV',
+    certificateNumber: 'TYPETEST-CERT-2025-ANV02',
+    status: 'valid'
+  }
+];
 
 // Common Monkeytype English words for practice mode
 export const MONKEYTYPE_WORDS = [

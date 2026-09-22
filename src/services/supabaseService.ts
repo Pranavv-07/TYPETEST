@@ -19,7 +19,8 @@ import {
   INITIAL_TRAINERS,
   INITIAL_CLASSES,
   INITIAL_TESTS,
-  INITIAL_SUBMISSIONS
+  INITIAL_SUBMISSIONS,
+  INITIAL_CERTIFICATES
 } from '../data/initialData';
 
 // Fallback in-memory institutional dataset for development and preview environments
@@ -40,7 +41,22 @@ let memoryTrainers: Trainer[] = [...INITIAL_TRAINERS];
 let memoryTests: TypingTest[] = [...INITIAL_TESTS];
 let memorySubmissions: TypingSubmission[] = [...INITIAL_SUBMISSIONS];
 let memoryViolations: ViolationRecord[] = [];
-let memoryCertificates: StudentCertificate[] = [];
+
+// Persistent certificates storage
+const loadSavedMemoryCertificates = (): StudentCertificate[] => {
+  try {
+    const raw = localStorage.getItem('typetest_memory_certificates');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch {}
+  return [...INITIAL_CERTIFICATES];
+};
+
+let memoryCertificates: StudentCertificate[] = loadSavedMemoryCertificates();
 let memoryAdmins: AdminUser[] = [
   { id: 'a0000000-0000-0000-0000-000000000001', name: 'Head of Examinations (Admin)', email: 'admin@testtype.edu', username: 'admin', role: 'SUPER ADMIN', status: 'active', createdAt: '2025-01-01' },
   { id: 'a0000000-0000-0000-0000-000000000002', name: 'Academic Controller (CSE)', email: 'academic@testtype.edu', username: 'exam_admin', role: 'EXAM ADMIN', status: 'active', createdAt: '2025-01-05' }
@@ -430,26 +446,47 @@ export async function submitTestAttemptAtomic(
 
   let issuedCertificate: StudentCertificate | undefined;
 
-  // Check certification eligibility
-  if (submission.accuracy >= 90 && submission.netWpm >= 20) {
+  // Requirement: "a new certificate should be generated only when he beats his Personal record or he completes any test"
+  const previousSubmissions = memorySubmissions.filter(
+    s => s.studentId === submission.studentId && s.id !== subId
+  );
+  const previousBests = previousSubmissions.map(s => s.netWpm || s.wpm || 0);
+  const highestPriorWpm = previousBests.length > 0 ? Math.max(...previousBests) : 0;
+
+  // Check if student beat their personal record or completed any test
+  const isPersonalRecord = submission.netWpm > 0 && (previousBests.length === 0 || submission.netWpm > highestPriorWpm);
+  const isTestCompleted = Boolean(submission.passed || submission.accuracy >= 60 || (submission.netWpm > 0 && submission.totalChars > 15));
+
+  if (isPersonalRecord || isTestCompleted) {
     const certNumber = `TYPETEST-CERT-${new Date().getFullYear()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
     const verifyCode = `V-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+
+    let achievementTitle = `${submission.netWpm >= 60 ? 'Master' : submission.netWpm >= 40 ? 'Proficient' : 'Standard'} Assessment Certification`;
+    if (isPersonalRecord && highestPriorWpm > 0) {
+      achievementTitle = `🏆 Personal Record Achievement (${submission.netWpm} WPM - Beat previous ${highestPriorWpm} WPM)`;
+    } else if (isPersonalRecord) {
+      achievementTitle = `🏆 Initial Benchmark & Personal Record (${submission.netWpm} WPM)`;
+    }
+
     issuedCertificate = {
-      id: `cert-${Date.now()}`,
+      id: `cert-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       studentId: submission.studentId,
       studentName: submission.studentName,
       rollNo: submission.rollNo,
-      achievementTitle: `${submission.netWpm >= 60 ? 'Master' : submission.netWpm >= 40 ? 'Proficient' : 'Standard'} Assessment Certification`,
+      achievementTitle,
       wpm: submission.netWpm,
       accuracy: submission.accuracy,
       testTitle: submission.testTitle,
       issuedAt: new Date().toISOString(),
-      issuingAuthority: 'Department of Computer Science & Engineering',
+      issuingAuthority: 'Pavan B (Lead Mentor & Proctor), CSE Dept',
       verificationCode: verifyCode,
       certificateNumber: certNumber,
       status: 'valid'
     };
-    memoryCertificates.push(issuedCertificate);
+    memoryCertificates = [issuedCertificate, ...memoryCertificates.filter(c => c.id !== issuedCertificate!.id)];
+    try {
+      localStorage.setItem('typetest_memory_certificates', JSON.stringify(memoryCertificates));
+    } catch {}
   }
 
   if (isSupabaseConfigured()) {
@@ -1570,6 +1607,13 @@ export async function fetchCertificates(): Promise<StudentCertificate[]> {
     }
   }
   return memoryCertificates;
+}
+
+export function addMemoryCertificate(cert: StudentCertificate): void {
+  memoryCertificates = [cert, ...memoryCertificates.filter(c => c.id !== cert.id)];
+  try {
+    localStorage.setItem('typetest_memory_certificates', JSON.stringify(memoryCertificates));
+  } catch {}
 }
 
 // AUDIT LOGS

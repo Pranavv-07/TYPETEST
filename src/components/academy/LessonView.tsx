@@ -90,6 +90,13 @@ export const LessonView: React.FC<LessonViewProps> = ({
   // Current lesson progress
   const lessonProgress = profile.lessonProgress[lesson.id];
   const isMastered = lessonProgress?.status === 'mastered';
+  const isGuidedCompleted = Boolean(
+    lessonProgress?.guidedCompleted ||
+    isMastered ||
+    profile.trainerOverrideUnlockAll
+  );
+
+  const [lockedNotice, setLockedNotice] = useState<string | null>(null);
 
   // Find next lesson
   const nextLessonInfo = useMemo(() => {
@@ -283,10 +290,13 @@ export const LessonView: React.FC<LessonViewProps> = ({
         </div>
       </div>
 
-      {/* 4-Step Pedagogical Workflow Tabs: LEARN -> GUIDED -> PRACTICE -> ASSESS */}
+      {/* Strict Step Progression: Step 1 Learn -> Step 2 Guided Drill -> Step 3 Mini Assessment (Locked until Guided Drill is complete) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-950/60 p-1.5 rounded-2xl border border-slate-800/80">
         <button
-          onClick={() => setActiveTab('learn')}
+          onClick={() => {
+            setLockedNotice(null);
+            setActiveTab('learn');
+          }}
           className={`py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all ${
             activeTab === 'learn'
               ? 'bg-amber-500 text-slate-950 shadow-md font-black'
@@ -298,19 +308,28 @@ export const LessonView: React.FC<LessonViewProps> = ({
         </button>
 
         <button
-          onClick={() => setActiveTab('guided')}
+          onClick={() => {
+            setLockedNotice(null);
+            setActiveTab('guided');
+          }}
           className={`py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all ${
             activeTab === 'guided'
               ? 'bg-amber-500 text-slate-950 shadow-md font-black'
+              : isGuidedCompleted
+              ? 'text-emerald-400 hover:text-emerald-300 hover:bg-slate-900'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
           }`}
         >
           <Keyboard className="w-4 h-4" />
           <span>2. Guided Drill</span>
+          {isGuidedCompleted && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
         </button>
 
         <button
-          onClick={() => setActiveTab('practice')}
+          onClick={() => {
+            setLockedNotice(null);
+            setActiveTab('practice');
+          }}
           className={`py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all ${
             activeTab === 'practice'
               ? 'bg-amber-500 text-slate-950 shadow-md font-black'
@@ -318,21 +337,64 @@ export const LessonView: React.FC<LessonViewProps> = ({
           }`}
         >
           <Sparkles className="w-4 h-4" />
-          <span>3. Free Practice</span>
+          <span>Free Practice</span>
         </button>
 
         <button
-          onClick={() => setActiveTab('assessment')}
+          onClick={() => {
+            if (!isGuidedCompleted) {
+              setLockedNotice("Mini Assessment is Locked! You must complete Step 2: Guided Drill first before taking this assessment.");
+            } else {
+              setLockedNotice(null);
+              setActiveTab('assessment');
+            }
+          }}
           className={`py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all ${
-            activeTab === 'assessment'
+            !isGuidedCompleted
+              ? 'bg-slate-900/40 text-slate-500 border border-slate-800/80 cursor-not-allowed opacity-75'
+              : activeTab === 'assessment'
               ? 'bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 shadow-md font-black'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+              : isMastered
+              ? 'text-amber-400 hover:text-amber-300 hover:bg-slate-900'
+              : 'text-cyan-400 hover:text-cyan-300 hover:bg-slate-900 font-bold'
           }`}
+          title={!isGuidedCompleted ? 'Complete Guided Drill to unlock' : 'Open Mini Assessment'}
         >
-          <Trophy className="w-4 h-4" />
-          <span>4. Mini Assessment</span>
+          {!isGuidedCompleted ? (
+            <Lock className="w-3.5 h-3.5 text-amber-500/80" />
+          ) : (
+            <Trophy className="w-4 h-4" />
+          )}
+          <span>3. Mini Assessment</span>
+          {!isGuidedCompleted && (
+            <span className="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded font-mono">
+              Locked
+            </span>
+          )}
         </button>
       </div>
+
+      {/* Locked Notice Banner */}
+      {lockedNotice && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in duration-200">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-400 shrink-0" />
+            <p className="text-xs text-amber-200 font-medium">
+              {lockedNotice}
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              setLockedNotice(null);
+              setActiveTab('guided');
+            }}
+            className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl transition-colors whitespace-nowrap self-end sm:self-auto flex items-center gap-1.5"
+          >
+            <span>Start Step 2: Guided Drill</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* TAB 1: LEARN & FINGER GUIDE */}
       {activeTab === 'learn' && (
@@ -419,13 +481,19 @@ export const LessonView: React.FC<LessonViewProps> = ({
               </div>
             )}
 
-            {/* Call to action: Proceed to Guided Practice */}
-            <div className="pt-6 flex justify-end border-t border-slate-800">
+            {/* Call to action: Proceed to Guided Drill */}
+            <div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-800">
+              <span className="text-xs text-slate-400">
+                Step 1 of 3 complete • Finger assignments reviewed
+              </span>
               <button
-                onClick={() => setActiveTab('guided')}
-                className="px-6 py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-sm transition-all shadow-lg shadow-amber-500/20 flex items-center gap-2"
+                onClick={() => {
+                  setLockedNotice(null);
+                  setActiveTab('guided');
+                }}
+                className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-sm transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2"
               >
-                <span>Start Guided Practice</span>
+                <span>Proceed to Step 2: Guided Drill</span>
                 <ChevronRight className="w-4 h-4" />
               </button>
             </div>
@@ -591,10 +659,16 @@ export const LessonView: React.FC<LessonViewProps> = ({
 
             <div className="space-y-1">
               <span className="text-[11px] font-mono uppercase tracking-wider text-amber-400 font-bold">
-                {activeTab === 'assessment' ? 'Assessment Results' : 'Drill Completed'}
+                {activeTab === 'assessment'
+                  ? 'Step 3: Assessment Results'
+                  : activeTab === 'guided'
+                  ? 'Step 2: Guided Drill Complete'
+                  : 'Free Practice Complete'}
               </span>
               <h2 className="text-2xl font-black text-slate-100">
-                {isNewlyMastered
+                {activeTab === 'guided'
+                  ? 'Guided Drill Completed!'
+                  : isNewlyMastered
                   ? 'Lesson Mastered!'
                   : isMastered
                   ? 'Great Repetition!'
@@ -603,7 +677,9 @@ export const LessonView: React.FC<LessonViewProps> = ({
                   : 'Practice Complete'}
               </h2>
               <p className="text-xs text-slate-400 max-w-xs mx-auto">
-                {isNewlyMastered
+                {activeTab === 'guided'
+                  ? 'Excellent execution! Step 3: Mini Assessment is now officially unlocked for this lesson.'
+                  : isNewlyMastered
                   ? 'You satisfied the speed & accuracy benchmarks. The next lesson is now unlocked!'
                   : activeTab === 'assessment'
                   ? `Requirements: ${lesson.minAccuracy}% Accuracy & ${lesson.minWpm} WPM. Keep practicing!`
@@ -674,7 +750,19 @@ export const LessonView: React.FC<LessonViewProps> = ({
                 <span>Practice Again</span>
               </button>
 
-              {isNewlyMastered && nextLessonInfo && onNextLesson ? (
+              {activeTab === 'guided' ? (
+                <button
+                  onClick={() => {
+                    setShowResultsModal(false);
+                    setLockedNotice(null);
+                    setActiveTab('assessment');
+                  }}
+                  className="w-full sm:w-1/2 py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black text-xs transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2"
+                >
+                  <span>Step 3: Begin Mini Assessment</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              ) : isNewlyMastered && nextLessonInfo && onNextLesson ? (
                 <button
                   onClick={() => {
                     setShowResultsModal(false);

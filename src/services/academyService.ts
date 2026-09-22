@@ -265,9 +265,15 @@ export function recordStudentLessonAttempt(
   currentProgress.bestAccuracy = Math.max(currentProgress.bestAccuracy, attempt.accuracy);
   currentProgress.lastAttemptDate = fullAttempt.timestamp;
 
+  // Track completion of phases
+  if (attempt.phase === 'guided') {
+    currentProgress.guidedCompleted = true;
+  }
+
   if (newlyMastered || currentProgress.status === 'mastered') {
     currentProgress.status = 'mastered';
     currentProgress.masteredAt = currentProgress.masteredAt || fullAttempt.timestamp;
+    currentProgress.guidedCompleted = true;
   } else {
     currentProgress.status = 'in_progress';
   }
