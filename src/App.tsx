@@ -8,11 +8,12 @@ import { TrainerDashboard } from './components/TrainerDashboard';
 import { StudentPortal } from './components/StudentPortal';
 import { AdminPortal } from './components/AdminPortal';
 import { MultiplayerArena } from './components/MultiplayerArena';
+import { AcademyDashboard } from './components/academy/AcademyDashboard';
 import { TypingTest } from './types';
 
 const MainLayout: React.FC = () => {
   const { currentUser } = useApp();
-  const [currentView, setCurrentView] = useState<'arena' | 'trainer' | 'student' | 'admin' | 'login' | 'multiplayer'>(() => {
+  const [currentView, setCurrentView] = useState<'arena' | 'trainer' | 'student' | 'admin' | 'login' | 'multiplayer' | 'academy'>(() => {
     // If user is already authenticated in session, route to their role dashboard
     const raw = localStorage.getItem('testtype_user_v2');
     if (raw) {
@@ -36,13 +37,17 @@ const MainLayout: React.FC = () => {
     if (activeAssessment) return;
 
     if (!currentUser) {
-      if (currentView !== 'arena' && currentView !== 'login' && currentView !== 'multiplayer') {
+      if (currentView !== 'arena' && currentView !== 'login' && currentView !== 'multiplayer' && currentView !== 'academy') {
         setCurrentView('login');
       }
       return;
     }
 
-    // Role-based authorization
+    // Role-based authorization: Allow shared views 'arena', 'multiplayer', 'academy'
+    if (currentView === 'arena' || currentView === 'multiplayer' || currentView === 'academy') {
+      return;
+    }
+
     if (currentUser.role === 'student') {
       if (currentView === 'trainer' || currentView === 'admin' || currentView === 'login') {
         setCurrentView('student');
@@ -117,6 +122,24 @@ const MainLayout: React.FC = () => {
               setCurrentView('arena');
             }}
             onOpenMultiplayer={() => setCurrentView('multiplayer')}
+            onOpenAcademy={() => setCurrentView('academy')}
+          />
+        )}
+
+        {currentView === 'academy' && (
+          <AcademyDashboard
+            currentUser={currentUser}
+            onExit={() =>
+              setCurrentView(
+                currentUser
+                  ? currentUser.role === 'trainer'
+                    ? 'trainer'
+                    : currentUser.role === 'admin'
+                    ? 'admin'
+                    : 'student'
+                  : 'arena'
+              )
+            }
           />
         )}
 

@@ -5,6 +5,7 @@ import { TypingTest, TestCategory, ProgrammingLanguage, TestReport, Student } fr
 import { LeaderboardModal } from './LeaderboardModal';
 import { ReportModal } from './ReportModal';
 import { CertificateGeneratorModal } from './CertificateGeneratorModal';
+import { TrainerAcademyManagement } from './academy/TrainerAcademyManagement';
 import {
   Users,
   Plus,
@@ -32,7 +33,8 @@ import {
   Share2,
   UserCheck,
   ExternalLink,
-  Award
+  Award,
+  GraduationCap
 } from 'lucide-react';
 
 interface TrainerDashboardProps {
@@ -41,6 +43,7 @@ interface TrainerDashboardProps {
 
 export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest }) => {
   const {
+    currentUser,
     classes,
     createClass,
     addStudentsToClass,
@@ -57,7 +60,7 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
     downloadReportCSV
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<'monitoring' | 'tests' | 'reports' | 'classes' | 'certificates'>('monitoring');
+  const [activeTab, setActiveTab] = useState<'monitoring' | 'tests' | 'reports' | 'classes' | 'certificates' | 'academy'>('monitoring');
   const [isCertModalOpen, setIsCertModalOpen] = useState(false);
 
   // Modal states
@@ -312,6 +315,18 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
         >
           <Users className="w-4 h-4" />
           <span>Cohorts & Rosters ({classes.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('academy')}
+          className={`pb-3 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all ${
+            activeTab === 'academy'
+              ? 'border-amber-400 text-amber-400 font-bold'
+              : 'border-transparent text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <GraduationCap className="w-4 h-4 text-amber-400" />
+          <span>Typing Academy Curriculum</span>
         </button>
       </div>
 
@@ -1359,6 +1374,15 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
             </div>
           </div>
         </div>
+      )}
+
+      {/* TAB: TYPING ACADEMY MANAGEMENT */}
+      {activeTab === 'academy' && (
+        <TrainerAcademyManagement
+          classes={classes}
+          students={students}
+          trainerId={currentUser?.id || 'trainer_1'}
+        />
       )}
 
       {isCertModalOpen && (

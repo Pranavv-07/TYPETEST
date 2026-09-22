@@ -1,11 +1,40 @@
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, GraduationCap, ArrowRight, Sparkles } from "lucide-react";
 import React, { useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { Trophy, Clock, Target, Zap, Activity, Calendar, Flame } from 'lucide-react';
 import { PerformanceOverTimeChart } from './PerformanceOverTimeChart';
+import { getStudentAcademyProfile, getActiveCurriculum } from '../services/academyService';
 
-export const StudentDashboard: React.FC = () => {
+interface StudentDashboardProps {
+  onOpenAcademy?: () => void;
+}
+
+export const StudentDashboard: React.FC<StudentDashboardProps> = ({ onOpenAcademy }) => {
   const { currentUser, submissions, students } = useApp();
+
+  // Academy Profile
+  const academyProfile = useMemo(() => {
+    return getStudentAcademyProfile(currentUser?.id || 'guest_student');
+  }, [currentUser]);
+
+  const curriculum = useMemo(() => getActiveCurriculum(), []);
+
+  const academyStats = useMemo(() => {
+    let total = 0;
+    let mastered = 0;
+    curriculum.levels.forEach(lvl => {
+      lvl.lessons.forEach(lsn => {
+        total++;
+        if (academyProfile.lessonProgress[lsn.id]?.status === 'mastered') mastered++;
+      });
+    });
+    return {
+      mastered,
+      total,
+      percent: total > 0 ? Math.round((mastered / total) * 100) : 0,
+      currentLevel: curriculum.levels.find(l => l.id === academyProfile.currentLevelId) || curriculum.levels[0],
+    };
+  }, [curriculum, academyProfile]);
 
   const mySubmissions = useMemo(() => submissions.filter(s =>
     s.studentId === currentUser?.id ||
@@ -108,6 +137,43 @@ export const StudentDashboard: React.FC = () => {
           </div>
           <div className="text-3xl font-bold text-slate-800">{stats.testsCompleted}</div>
         </div>
+      </div>
+
+      {/* Typing Academy Curriculum Featured Banner */}
+      <div className="bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-cyan-500/10 border border-amber-500/30 rounded-2xl p-6 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-5">
+        <div className="space-y-2 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-amber-500/20 text-amber-700 border border-amber-500/30 flex items-center gap-1">
+              <GraduationCap className="w-3.5 h-3.5" /> Typing Academy
+            </span>
+            <span className="text-xs font-mono text-slate-600 font-semibold">
+              {academyStats.mastered} of {academyStats.total} Lessons Mastered ({academyStats.percent}%)
+            </span>
+          </div>
+          <h3 className="text-lg font-black text-slate-900">
+            {academyStats.currentLevel.title}
+          </h3>
+          <p className="text-xs text-slate-600 leading-relaxed max-w-xl">
+            {academyStats.currentLevel.tagline} — Master touch typing with muscle memory, anatomical finger guidance, and progressive accuracy unlocks.
+          </p>
+
+          <div className="w-full max-w-md h-2 bg-slate-200 rounded-full overflow-hidden mt-2">
+            <div
+              className="h-full bg-gradient-to-r from-amber-500 to-emerald-500 rounded-full"
+              style={{ width: `${academyStats.percent}%` }}
+            />
+          </div>
+        </div>
+
+        {onOpenAcademy && (
+          <button
+            onClick={onOpenAcademy}
+            className="px-5 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-all shadow-md flex items-center gap-2 shrink-0"
+          >
+            <span>Resume Academy</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       {/* Recharts Performance Over Time line chart */}

@@ -34,12 +34,14 @@ interface StudentPortalProps {
   onStartAssessment: (test: TypingTest) => void;
   onOpenPractice: () => void;
   onOpenMultiplayer?: () => void;
+  onOpenAcademy?: () => void;
 }
 
 export const StudentPortal: React.FC<StudentPortalProps> = ({
   onStartAssessment,
   onOpenPractice,
-  onOpenMultiplayer
+  onOpenMultiplayer,
+  onOpenAcademy
 }) => {
   const { currentUser, classes, tests, submissions, certificates } = useApp();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'assigned' | 'leaderboard' | 'history' | 'certificates'>('dashboard');
@@ -248,7 +250,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
       </div>
 
       <div className="pt-2">
-        {activeTab === 'dashboard' && <StudentDashboard />}
+        {activeTab === 'dashboard' && <StudentDashboard onOpenAcademy={onOpenAcademy} />}
         {activeTab === 'leaderboard' && <StudentLeaderboard />}
       </div>
 

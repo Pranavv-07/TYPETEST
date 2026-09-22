@@ -238,3 +238,146 @@ export interface BulkImportResult {
 
 export type TypingMode = 'time' | 'words' | 'story' | 'code';
 
+// ==========================================
+// TYPING ACADEMY (LESSONS & CURRICULUM MODULE)
+// ==========================================
+
+export type FingerAssignment =
+  | 'left-pinky'
+  | 'left-ring'
+  | 'left-middle'
+  | 'left-index'
+  | 'thumbs'
+  | 'right-index'
+  | 'right-middle'
+  | 'right-ring'
+  | 'right-pinky';
+
+export interface KeyFingerGuide {
+  key: string;
+  finger: FingerAssignment;
+  hand: 'left' | 'right' | 'both';
+  label: string;
+}
+
+export interface AcademyLesson {
+  id: string;
+  levelId: number;
+  order: number;
+  title: string;
+  subtitle?: string;
+  objective: string;
+  concept: string;
+  keysIntroduced: string[];
+  targetFingers: KeyFingerGuide[];
+  guidedText: string;
+  practiceText: string;
+  assessmentText: string;
+  assessmentDuration: number; // in seconds
+  minAccuracy: number; // e.g. 95%
+  minWpm: number; // e.g. 20 WPM
+  prerequisiteLessonId?: string;
+  prerequisiteReason?: string;
+  isLevelAssessment?: boolean;
+}
+
+export interface AcademyLevel {
+  id: number;
+  title: string;
+  tagline: string;
+  description: string;
+  iconName: string;
+  lessons: AcademyLesson[];
+  minAccuracy: number;
+  minWpm: number;
+  prerequisiteLevelId?: number;
+}
+
+export interface AcademyCurriculum {
+  id: string;
+  title: string;
+  code: string;
+  category: 'university' | 'school' | 'professional' | 'coding';
+  description: string;
+  levels: AcademyLevel[];
+}
+
+export interface StudentLessonAttempt {
+  id: string;
+  studentId: string;
+  lessonId: string;
+  levelId: number;
+  phase: 'guided' | 'practice' | 'assessment';
+  wpm: number;
+  rawWpm: number;
+  accuracy: number;
+  correctChars: number;
+  incorrectChars: number;
+  totalChars: number;
+  errors: number;
+  timeTakenSeconds: number;
+  passed: boolean;
+  mastered: boolean;
+  weakKeysDetected: string[];
+  timestamp: string;
+}
+
+export interface StudentLessonProgress {
+  lessonId: string;
+  studentId: string;
+  status: 'locked' | 'unlocked' | 'in_progress' | 'completed' | 'mastered';
+  attemptsCount: number;
+  bestWpm: number;
+  bestAccuracy: number;
+  lastAttemptDate?: string;
+  masteredAt?: string;
+  lockReason?: string;
+}
+
+export interface StudentAcademyProfile {
+  studentId: string;
+  curriculumId: string;
+  currentLevelId: number;
+  currentLessonId: string;
+  diagnosticCompleted: boolean;
+  diagnosticWpm?: number;
+  diagnosticAccuracy?: number;
+  diagnosticRecommendedLevel?: number;
+  lessonProgress: Record<string, StudentLessonProgress>; // lessonId -> progress
+  weakKeysCounter: Record<string, number>; // character -> error count
+  totalPracticeSeconds: number;
+  streakDays: number;
+  certificateEarned?: boolean;
+  certificateId?: string;
+  trainerOverrideUnlockAll?: boolean;
+}
+
+export interface AcademyDiagnosticResult {
+  wpm: number;
+  accuracy: number;
+  errors: number;
+  consistency: number;
+  recommendedLevelId: number;
+  recommendedLevelTitle: string;
+  placementMessage: string;
+  weakKeys: string[];
+  timestamp: string;
+}
+
+export interface AcademyAssignment {
+  id: string;
+  title: string;
+  classId: string;
+  className: string;
+  trainerId: string;
+  curriculumId: string;
+  levelIds: number[];
+  lessonIds?: string[];
+  minWpm: number;
+  minAccuracy: number;
+  startDate: string;
+  dueDate: string;
+  status: 'active' | 'completed' | 'archived';
+  createdAt: string;
+}
+

@@ -1,6 +1,6 @@
 {
   "name": "TestType",
-  "description": "Typing speed assessment and proctoring platform with Monkeytype-style testing, coding & story modules, trainer class management, and institutional analytics.",
+  "description": "Comprehensive typing platform featuring progressive Touch Typing Academy curriculum, real-time proctored institutional assessments, coding & prose modules, mechanical audio synthesizer, and multiplayer arena.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

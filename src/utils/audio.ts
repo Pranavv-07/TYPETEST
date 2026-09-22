@@ -40,6 +40,10 @@ class SoundController {
     this.volume = Math.max(0, Math.min(1, vol));
   }
 
+  public playKeySound(_char?: string) {
+    this.playKeyClick();
+  }
+
   public playKeyClick(overrideSwitch?: MechanicalSwitchType) {
     if (!this.enabled || this.volume <= 0) return;
     try {
