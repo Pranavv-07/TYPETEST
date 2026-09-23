@@ -345,6 +345,7 @@ export interface StudentLessonProgress {
   lockReason?: string;
   guidedCompleted?: boolean;
   conceptRead?: boolean;
+  completedDrillNumbers?: number[]; // e.g. [1, 2, 3]
 }
 
 export interface StudentAcademyProfile {
@@ -360,6 +361,10 @@ export interface StudentAcademyProfile {
   weakKeysCounter: Record<string, number>; // character -> error count
   totalPracticeSeconds: number;
   streakDays: number;
+  longestStreakDays?: number;
+  lastActiveDate?: string; // YYYY-MM-DD
+  activityDates?: string[]; // Array of YYYY-MM-DD
+  practicedToday?: boolean;
   certificateEarned?: boolean;
   certificateId?: string;
   trainerOverrideUnlockAll?: boolean;

@@ -3,7 +3,7 @@ import React, { useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { Trophy, Clock, Target, Zap, Activity, Calendar, Flame } from 'lucide-react';
 import { PerformanceOverTimeChart } from './PerformanceOverTimeChart';
-import { getStudentAcademyProfile, getActiveCurriculum } from '../services/academyService';
+import { getStudentAcademyProfile, getActiveCurriculum, getStudentAttemptHistory, calculateStreakFromDates } from '../services/academyService';
 
 interface StudentDashboardProps {
   onOpenAcademy?: () => void;
@@ -62,34 +62,29 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ onOpenAcadem
     const avgAccuracy = testsCompleted ? Math.round(sumAccuracy / testsCompleted) : 0;
     const totalScore = Math.round((avgWpm * avgAccuracy) / 100 * testsCompleted);
 
-    let currentStreak = 0;
-    if (mySubmissions.length > 0) {
-      // Sort submissions by date descending
-      const sortedDates = [...mySubmissions]
-        .map(s => new Date(s.timestamp || new Date()).setHours(0, 0, 0, 0))
-        .sort((a, b) => b - a);
-      
-      const uniqueDates = [...new Set(sortedDates)];
-      const today = new Date().setHours(0, 0, 0, 0);
-      const yesterday = today - 86400000;
-      
-      if (uniqueDates.length > 0 && (uniqueDates[0] === today || uniqueDates[0] === yesterday)) {
-        currentStreak = 1;
-        let expectedDate = uniqueDates[0] - 86400000;
-        for (let i = 1; i < uniqueDates.length; i++) {
-          if (uniqueDates[i] === expectedDate) {
-            currentStreak++;
-            expectedDate -= 86400000;
-          } else {
-            break;
-          }
-        }
-      }
+    const dates: string[] = [];
+    mySubmissions.forEach(s => {
+      if (s.timestamp) dates.push(s.timestamp);
+    });
+    if (currentUser?.id) {
+      const attempts = getStudentAttemptHistory(currentUser.id);
+      attempts.forEach(a => {
+        if (a.timestamp) dates.push(a.timestamp);
+      });
     }
+    const streakResult = calculateStreakFromDates(dates);
 
-
-    return { bestWpm, avgWpm, avgAccuracy, testsCompleted, totalTime, totalScore, currentStreak };
-  }, [mySubmissions]);
+    return {
+      bestWpm,
+      avgWpm,
+      avgAccuracy,
+      testsCompleted,
+      totalTime,
+      totalScore,
+      currentStreak: streakResult.currentStreak,
+      practicedToday: streakResult.practicedToday
+    };
+  }, [mySubmissions, currentUser?.id]);
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">

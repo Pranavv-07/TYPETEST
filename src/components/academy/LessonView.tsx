@@ -11,6 +11,8 @@ import {
 } from '../../data/academyCurriculum';
 import {
   recordStudentLessonAttempt,
+  recordStudentDrillCompletion,
+  recordConceptRead,
   getActiveCurriculum
 } from '../../services/academyService';
 import { soundController } from '../../utils/audio';
@@ -34,7 +36,8 @@ import {
   Layers,
   Award,
   Flame,
-  Check
+  Check,
+  ArrowRight
 } from 'lucide-react';
 
 interface LessonViewProps {
@@ -47,16 +50,12 @@ interface LessonViewProps {
   onProfileUpdated: (updated: StudentAcademyProfile) => void;
 }
 
-// Generate default 3 structured progressive drills for any lesson
+// Generate 3 progressive drills for any lesson
 export function resolveLessonDrills(lesson: AcademyLesson): GuidedDrill[] {
   if (lesson.drills && lesson.drills.length >= 2) {
     return lesson.drills;
   }
 
-  // Derive 3 distinct drills:
-  // Drill 1: Key isolates / Bigrams from guidedText
-  // Drill 2: Rhythmic words from practiceText
-  // Drill 3: Contextual phrasing from guidedText & practiceText combined
   const keysStr = lesson.keysIntroduced.length > 0
     ? lesson.keysIntroduced.slice(0, 4).join(' ')
     : 'home row keys';
@@ -101,17 +100,35 @@ export const LessonView: React.FC<LessonViewProps> = ({
   onNextLesson,
   onProfileUpdated,
 }) => {
-  // Resolve 3 progressive guided drills for this lesson
+  // Resolve 3 progressive drills
   const drills = useMemo(() => resolveLessonDrills(lesson), [lesson]);
 
-  // Lesson phase: 'learn' | 'drills' | 'assessment'
+  // Current lesson progress from profile
+  const lessonProgress = profile.lessonProgress[lesson.id];
+  const isMastered = lessonProgress?.status === 'mastered';
+
+  // Sequential Phase State: 'learn' | 'drills' | 'assessment'
+  // When opening any new lesson, default strictly to 'learn' (Concept phase)
   const [activeTab, setActiveTab] = useState<'learn' | 'drills' | 'assessment'>('learn');
-  
-  // Active drill index within the Guided Drills tab (0, 1, or 2)
+
+  // Active sub-drill index (0 = Drill 1, 1 = Drill 2, 2 = Drill 3)
   const [activeDrillIndex, setActiveDrillIndex] = useState<number>(0);
-  
-  // Track completed drills for this lesson in local state
-  const [completedDrills, setCompletedDrills] = useState<Record<number, boolean>>({});
+
+  // Track completed drills in local session + profile
+  const [completedDrillsMap, setCompletedDrillsMap] = useState<Record<number, boolean>>(() => {
+    const map: Record<number, boolean> = {};
+    if (lessonProgress?.completedDrillNumbers) {
+      lessonProgress.completedDrillNumbers.forEach(num => {
+        map[num - 1] = true; // 1-indexed to 0-indexed
+      });
+    }
+    if (lessonProgress?.guidedCompleted || isMastered || profile.trainerOverrideUnlockAll) {
+      map[0] = true;
+      map[1] = true;
+      map[2] = true;
+    }
+    return map;
+  });
 
   // Sound toggle
   const [soundOn, setSoundOn] = useState(true);
@@ -126,31 +143,11 @@ export const LessonView: React.FC<LessonViewProps> = ({
   const [isNewlyMastered, setIsNewlyMastered] = useState(false);
   const [lockedNotice, setLockedNotice] = useState<string | null>(null);
 
-  // Input ref
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Determine current target text based on active tab and drill index
-  const activeTargetText = useMemo(() => {
-    if (activeTab === 'drills') {
-      const drill = drills[activeDrillIndex] || drills[0];
-      return drill.targetText;
-    }
-    if (activeTab === 'assessment') {
-      return lesson.assessmentText;
-    }
-    return drills[0].targetText;
-  }, [activeTab, activeDrillIndex, drills, lesson]);
-
-  // Current lesson progress from profile
-  const lessonProgress = profile.lessonProgress[lesson.id];
-  const isMastered = lessonProgress?.status === 'mastered';
-  
-  // All 3 drills are considered completed if:
-  // 1. All drill indices (0, 1, 2) are completed in current session, OR
-  // 2. Lesson is already marked as mastered or guidedCompleted in profile, OR
-  // 3. Trainer override is active.
+  // Check if all 3 drills are done
   const allDrillsCompleted = Boolean(
-    (completedDrills[0] && completedDrills[1] && completedDrills[2]) ||
+    (completedDrillsMap[0] && completedDrillsMap[1] && completedDrillsMap[2]) ||
     lessonProgress?.guidedCompleted ||
     isMastered ||
     profile.trainerOverrideUnlockAll
@@ -173,7 +170,46 @@ export const LessonView: React.FC<LessonViewProps> = ({
     return null;
   }, [lesson.id]);
 
-  // Reset typing state when tab or active drill changes
+  // When lesson prop changes (e.g. student clicked next lesson), reset strictly to Step 1 (Learn Concept)
+  useEffect(() => {
+    setActiveTab('learn');
+    setActiveDrillIndex(0);
+    setInputText('');
+    setStartTime(null);
+    setEndTime(null);
+    setCurrentKeystrokeErrors([]);
+    setShowResultsModal(false);
+    setLockedNotice(null);
+
+    // Re-initialize completed drills map
+    const prog = profile.lessonProgress[lesson.id];
+    const map: Record<number, boolean> = {};
+    if (prog?.completedDrillNumbers) {
+      prog.completedDrillNumbers.forEach(num => {
+        map[num - 1] = true;
+      });
+    }
+    if (prog?.guidedCompleted || prog?.status === 'mastered' || profile.trainerOverrideUnlockAll) {
+      map[0] = true;
+      map[1] = true;
+      map[2] = true;
+    }
+    setCompletedDrillsMap(map);
+  }, [lesson.id]);
+
+  // Target text calculation
+  const activeTargetText = useMemo(() => {
+    if (activeTab === 'drills') {
+      const drill = drills[activeDrillIndex] || drills[0];
+      return drill.targetText;
+    }
+    if (activeTab === 'assessment') {
+      return lesson.assessmentText;
+    }
+    return drills[0].targetText;
+  }, [activeTab, activeDrillIndex, drills, lesson]);
+
+  // Reset typing input when changing active drill or tab
   useEffect(() => {
     setInputText('');
     setStartTime(null);
@@ -183,9 +219,9 @@ export const LessonView: React.FC<LessonViewProps> = ({
     if (activeTab !== 'learn') {
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-  }, [activeTab, activeDrillIndex, lesson.id]);
+  }, [activeTab, activeDrillIndex]);
 
-  // Handle keystroke input
+  // Handle keystroke typing
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     const target = activeTargetText;
@@ -194,7 +230,7 @@ export const LessonView: React.FC<LessonViewProps> = ({
       setStartTime(Date.now());
     }
 
-    // Identify mistake in latest character
+    // Audio acoustic feedback & error tracking
     if (val.length > inputText.length) {
       const idx = val.length - 1;
       const expectedChar = target[idx];
@@ -212,13 +248,13 @@ export const LessonView: React.FC<LessonViewProps> = ({
 
     setInputText(val);
 
-    // Check completion
+    // When typing completed
     if (val.length >= target.length) {
       finishAttempt(val);
     }
   };
 
-  // Finish Attempt calculation
+  // Evaluate & finish attempt
   const finishAttempt = (typedVal: string) => {
     const finishTimestamp = Date.now();
     setEndTime(finishTimestamp);
@@ -244,29 +280,29 @@ export const LessonView: React.FC<LessonViewProps> = ({
       }
     }
 
-    // Standard metric: 5 chars = 1 word
     const rawWpm = Math.max(0, Math.round((typedVal.length / 5) / elapsedMinutes));
     const netWpm = Math.max(0, Math.round((correctChars / 5) / elapsedMinutes));
     const accuracy = typedVal.length > 0
       ? Math.max(0, Math.round((correctChars / typedVal.length) * 100))
       : 100;
 
-    // Strict 95% accuracy requirement for mastery
     const isAssessment = activeTab === 'assessment';
     const strictMinAcc = Math.max(95, lesson.minAccuracy || 95);
     const passed = isAssessment
       ? accuracy >= strictMinAcc && netWpm >= lesson.minWpm
-      : accuracy >= 85; // Guided drills require basic 85% to mark completed
+      : accuracy >= 80;
 
     // If active tab was a guided drill, mark this drill completed!
     if (activeTab === 'drills') {
-      setCompletedDrills(prev => ({
+      const drillNum = activeDrillIndex + 1;
+      setCompletedDrillsMap(prev => ({
         ...prev,
         [activeDrillIndex]: true
       }));
+      recordStudentDrillCompletion(studentId, lesson.id, drillNum);
     }
 
-    // Record attempt in academy service
+    // Record attempt
     const { attempt, profile: updatedProfile, newlyMastered } = recordStudentLessonAttempt(
       studentId,
       {
@@ -296,15 +332,37 @@ export const LessonView: React.FC<LessonViewProps> = ({
     if (newlyMastered) {
       try {
         confetti({
-          particleCount: 150,
-          spread: 90,
+          particleCount: 160,
+          spread: 100,
           origin: { y: 0.6 }
         });
       } catch {}
     }
   };
 
-  // Current target character & anatomical finger guide
+  // Transition from Step 1 (Learn) to Step 2 (Drills)
+  const handleStartDrills = () => {
+    recordConceptRead(studentId, lesson.id);
+    setLockedNotice(null);
+    setActiveTab('drills');
+    setActiveDrillIndex(0);
+  };
+
+  // Transition to next sub-drill or final assessment
+  const handleNextDrillOrAssessment = () => {
+    setShowResultsModal(false);
+    if (activeDrillIndex === 0) {
+      setActiveDrillIndex(1); // Go to Drill 2
+    } else if (activeDrillIndex === 1) {
+      setActiveDrillIndex(2); // Go to Drill 3
+    } else if (activeDrillIndex === 2) {
+      // All 3 drills done! Open Step 3: Final Assessment
+      setLockedNotice(null);
+      setActiveTab('assessment');
+    }
+  };
+
+  // Current target key & anatomical finger guide
   const currentTargetChar = activeTargetText[inputText.length] || '';
   const currentFingerGuide = lesson.targetFingers.find(
     tf => tf.key.toLowerCase() === currentTargetChar.toLowerCase()
@@ -312,7 +370,8 @@ export const LessonView: React.FC<LessonViewProps> = ({
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-6 animate-in fade-in duration-300">
-      {/* Top Header & Status Bar */}
+      
+      {/* Top Header & Breadcrumb Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl">
         <div className="flex items-center gap-3">
           <button
@@ -339,7 +398,7 @@ export const LessonView: React.FC<LessonViewProps> = ({
           </div>
         </div>
 
-        {/* Strict Lesson Criteria (Strict 95% Accuracy Requirement) */}
+        {/* Strict Criteria & Sound Toggle */}
         <div className="flex items-center gap-3 self-end sm:self-auto font-mono text-xs">
           <div className="px-3 py-1.5 rounded-xl bg-slate-950 border border-emerald-500/30 text-slate-400 flex items-center gap-1.5">
             <Target className="w-3.5 h-3.5 text-emerald-400" />
@@ -363,8 +422,8 @@ export const LessonView: React.FC<LessonViewProps> = ({
         </div>
       </div>
 
-      {/* THREE-STEP PROCESS NAVIGATION: 1. Learn Concept -> 2. Guided Drills (3 Drills) -> 3. Final Assessment (Locked until Drills complete) */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-950/60 p-2 rounded-2xl border border-slate-800/80">
+      {/* SEQUENTIAL 3-STEP WIZARD STEPPER */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-950/70 p-2.5 rounded-2xl border border-slate-800">
         
         {/* Step 1: Learn Concept */}
         <button
@@ -374,18 +433,20 @@ export const LessonView: React.FC<LessonViewProps> = ({
           }}
           className={`py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-between transition-all ${
             activeTab === 'learn'
-              ? 'bg-amber-500 text-slate-950 shadow-md font-black'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+              ? 'bg-amber-500 text-slate-950 shadow-md font-black ring-2 ring-amber-400/50'
+              : 'text-slate-300 hover:text-slate-100 hover:bg-slate-900 bg-slate-900/60'
           }`}
         >
           <div className="flex items-center gap-2">
             <BookOpen className="w-4 h-4" />
-            <span>1. Learn Concept</span>
+            <span>Step 1: Learn Concept</span>
           </div>
-          <span className="text-[10px] font-mono opacity-80">Posture & Keys</span>
+          <span className="text-[10px] font-mono opacity-90">
+            {lessonProgress?.conceptRead || allDrillsCompleted ? '✓ Done' : 'Start'}
+          </span>
         </button>
 
-        {/* Step 2: Guided Drills (Contains Drill 1, 2, 3) */}
+        {/* Step 2: Guided Drills */}
         <button
           onClick={() => {
             setLockedNotice(null);
@@ -393,35 +454,35 @@ export const LessonView: React.FC<LessonViewProps> = ({
           }}
           className={`py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-between transition-all ${
             activeTab === 'drills'
-              ? 'bg-amber-500 text-slate-950 shadow-md font-black'
+              ? 'bg-amber-500 text-slate-950 shadow-md font-black ring-2 ring-amber-400/50'
               : allDrillsCompleted
-              ? 'text-emerald-400 hover:text-emerald-300 hover:bg-slate-900'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+              ? 'text-emerald-400 hover:text-emerald-300 hover:bg-slate-900 bg-slate-900/60'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900 bg-slate-900/40'
           }`}
         >
           <div className="flex items-center gap-2">
             <Keyboard className="w-4 h-4" />
-            <span>2. Guided Drills</span>
+            <span>Step 2: Guided Drills</span>
           </div>
           <div className="flex items-center gap-1 font-mono text-[10px]">
             {allDrillsCompleted ? (
-              <span className="flex items-center gap-1 text-emerald-400 font-bold">
+              <span className="text-emerald-400 font-bold flex items-center gap-1">
                 <CheckCircle2 className="w-3.5 h-3.5" /> 3/3 Done
               </span>
             ) : (
-              <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
-                {Object.values(completedDrills).filter(Boolean).length}/3 Drills
+              <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-bold">
+                {Object.values(completedDrillsMap).filter(Boolean).length}/3 Drills
               </span>
             )}
           </div>
         </button>
 
-        {/* Step 3: Final Assessment (LOCKED until all drills are complete) */}
+        {/* Step 3: Final Assessment (Strictly Locked until Drills 1, 2, 3 are done) */}
         <button
           onClick={() => {
             if (!allDrillsCompleted) {
               setLockedNotice(
-                `Final Assessment is Locked! You must complete all 3 Guided Drills (Key Isolates, Rhythmic Words, & Contextual Phrasing) to unlock this assessment.`
+                'Final Assessment is strictly locked! You must complete all 3 Guided Drills (Key Isolates, Rhythmic Words, & Contextual Phrasing) to unlock this assessment.'
               );
             } else {
               setLockedNotice(null);
@@ -430,14 +491,14 @@ export const LessonView: React.FC<LessonViewProps> = ({
           }}
           className={`py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-between transition-all ${
             !allDrillsCompleted
-              ? 'bg-slate-900/40 text-slate-500 border border-slate-800/80 cursor-not-allowed opacity-75'
+              ? 'bg-slate-900/30 text-slate-500 border border-slate-800/80 cursor-not-allowed'
               : activeTab === 'assessment'
-              ? 'bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 shadow-md font-black'
+              ? 'bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 shadow-md font-black ring-2 ring-amber-400/50'
               : isMastered
-              ? 'text-amber-400 hover:text-amber-300 hover:bg-slate-900'
-              : 'text-cyan-400 hover:text-cyan-300 hover:bg-slate-900 font-bold'
+              ? 'text-emerald-400 hover:text-emerald-300 hover:bg-slate-900 bg-slate-900/60'
+              : 'text-cyan-400 hover:text-cyan-300 hover:bg-slate-900 bg-slate-900/60 font-bold'
           }`}
-          title={!allDrillsCompleted ? 'Complete all 3 drills to unlock' : 'Open Final Assessment'}
+          title={!allDrillsCompleted ? 'Complete all 3 drills first to unlock' : 'Open Final Assessment'}
         >
           <div className="flex items-center gap-2">
             {!allDrillsCompleted ? (
@@ -445,11 +506,11 @@ export const LessonView: React.FC<LessonViewProps> = ({
             ) : (
               <Trophy className="w-4 h-4" />
             )}
-            <span>3. Final Assessment</span>
+            <span>Step 3: Final Assessment</span>
           </div>
           <div className="font-mono text-[10px]">
             {!allDrillsCompleted ? (
-              <span className="bg-slate-800 text-slate-400 px-2 py-0.5 rounded">Locked</span>
+              <span className="bg-slate-800 text-amber-400/90 px-2 py-0.5 rounded font-bold">🔒 Locked</span>
             ) : isMastered ? (
               <span className="text-emerald-400 font-bold">Mastered</span>
             ) : (
@@ -459,12 +520,12 @@ export const LessonView: React.FC<LessonViewProps> = ({
         </button>
       </div>
 
-      {/* Locked Assessment Warning Banner */}
+      {/* Locked Notice Alert */}
       {lockedNotice && (
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in duration-200">
           <div className="flex items-center gap-3">
             <AlertCircle className="w-5 h-5 text-amber-400 shrink-0" />
-            <p className="text-xs text-amber-200 font-medium">
+            <p className="text-xs text-amber-200 font-medium leading-relaxed">
               {lockedNotice}
             </p>
           </div>
@@ -483,11 +544,11 @@ export const LessonView: React.FC<LessonViewProps> = ({
 
       {/* STEP 1: LEARN CONCEPT & FINGER POSITIONS */}
       {activeTab === 'learn' && (
-        <div className="space-y-6">
+        <div className="space-y-6 animate-in fade-in duration-200">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 space-y-6 shadow-xl">
             <div className="space-y-2">
               <span className="text-[11px] font-mono uppercase tracking-wider text-amber-400 font-bold">
-                Learning Objective
+                Step 1: Learning Objective & Posture
               </span>
               <h2 className="text-xl sm:text-2xl font-black text-slate-100">
                 {lesson.objective}
@@ -497,7 +558,7 @@ export const LessonView: React.FC<LessonViewProps> = ({
               </p>
             </div>
 
-            {/* Keys Introduced */}
+            {/* Target Keys Introduced */}
             {lesson.keysIntroduced.length > 0 && (
               <div className="space-y-3 pt-4 border-t border-slate-800">
                 <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-400">
@@ -565,20 +626,16 @@ export const LessonView: React.FC<LessonViewProps> = ({
               </div>
             )}
 
-            {/* Call to action */}
+            {/* Clear Primary Action Button to Proceed to Step 2: Guided Drills */}
             <div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-800">
               <span className="text-xs text-slate-400">
-                Concept & finger guides reviewed • 3 Progressive Drills await in Step 2
+                Concept reviewed • 3 Progressive Drills will unlock Step 3: Final Assessment
               </span>
               <button
-                onClick={() => {
-                  setLockedNotice(null);
-                  setActiveTab('drills');
-                  setActiveDrillIndex(0);
-                }}
-                className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-sm transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2"
+                onClick={handleStartDrills}
+                className="w-full sm:w-auto px-7 py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-sm transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2"
               >
-                <span>Proceed to Step 2: Guided Drills (1/3)</span>
+                <span>Begin Step 2: Guided Drills (1/3)</span>
                 <ChevronRight className="w-4 h-4" />
               </button>
             </div>
@@ -586,74 +643,86 @@ export const LessonView: React.FC<LessonViewProps> = ({
         </div>
       )}
 
-      {/* STEP 2 & 3: INTERACTIVE TYPING ARENA */}
-      {activeTab !== 'learn' && (
-        <div className="space-y-5">
+      {/* STEP 2: GUIDED DRILLS ARENA */}
+      {activeTab === 'drills' && (
+        <div className="space-y-5 animate-in fade-in duration-200">
           
-          {/* STEP 2 SUB-STEPPER: 3 PROGRESSIVE DRILLS HEADER */}
-          {activeTab === 'drills' && (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-lg">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
-                <div className="flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-amber-400" />
-                  <span className="text-xs font-bold text-slate-100 uppercase tracking-wider font-mono">
-                    Progressive Guided Drills (Step 2 of 3)
-                  </span>
-                </div>
-                <span className="text-[11px] font-mono text-slate-400">
-                  Complete Drills 1, 2, and 3 to unlock the Final Assessment
+          {/* Sub-drill sequence bar (Drill 1 -> Drill 2 -> Drill 3) */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-lg">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Layers className="w-4 h-4 text-amber-400" />
+                <span className="text-xs font-bold text-slate-100 uppercase tracking-wider font-mono">
+                  Step 2: Guided Drills Sequence (Complete 1, 2, and 3 to unlock Assessment)
                 </span>
               </div>
+              <span className="text-[11px] font-mono text-slate-400">
+                Active Drill: <strong className="text-amber-400">{activeDrillIndex + 1} of 3</strong>
+              </span>
+            </div>
 
-              {/* 3 Drill Sub-tabs */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                {drills.map((d, idx) => {
-                  const isDone = completedDrills[idx] || allDrillsCompleted;
-                  const isActive = activeDrillIndex === idx;
+            {/* 3 Sequential Drill Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              {drills.map((d, idx) => {
+                const isDone = completedDrillsMap[idx] || allDrillsCompleted;
+                const isActive = activeDrillIndex === idx;
+                const isLocked = idx > 0 && !completedDrillsMap[idx - 1] && !allDrillsCompleted;
 
-                  return (
-                    <button
-                      key={d.id}
-                      onClick={() => setActiveDrillIndex(idx)}
-                      className={`p-3 rounded-xl border text-left transition-all flex items-center justify-between ${
+                return (
+                  <button
+                    key={d.id}
+                    disabled={isLocked}
+                    onClick={() => {
+                      if (!isLocked) {
+                        setActiveDrillIndex(idx);
+                      }
+                    }}
+                    className={`p-3 rounded-xl border text-left transition-all flex items-center justify-between ${
+                      isActive
+                        ? 'bg-amber-500/15 border-amber-500/50 text-amber-300 ring-1 ring-amber-500/40 shadow-md'
+                        : isDone
+                        ? 'bg-slate-950 border-emerald-500/30 text-slate-300 hover:border-slate-700'
+                        : isLocked
+                        ? 'bg-slate-950/40 border-slate-900 text-slate-600 cursor-not-allowed opacity-60'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500">
+                          Drill {idx + 1}
+                        </span>
+                        {isDone && (
+                          <Check className="w-3.5 h-3.5 text-emerald-400 inline" />
+                        )}
+                        {isLocked && (
+                          <Lock className="w-3 h-3 text-slate-600 inline" />
+                        )}
+                      </div>
+                      <h4 className="font-bold text-xs mt-0.5 line-clamp-1">{d.title}</h4>
+                    </div>
+
+                    <span
+                      className={`text-[9px] font-mono px-2 py-0.5 rounded-full font-bold uppercase shrink-0 ${
                         isActive
-                          ? 'bg-amber-500/15 border-amber-500/50 text-amber-300 ring-1 ring-amber-500/40 shadow-md'
+                          ? 'bg-amber-500 text-slate-950'
                           : isDone
-                          ? 'bg-slate-950 border-emerald-500/30 text-slate-300 hover:border-slate-700'
-                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                          ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                          : isLocked
+                          ? 'bg-slate-900 text-slate-600'
+                          : 'bg-slate-800 text-slate-400'
                       }`}
                     >
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500">
-                            Drill {idx + 1}
-                          </span>
-                          {isDone && (
-                            <Check className="w-3.5 h-3.5 text-emerald-400 inline" />
-                          )}
-                        </div>
-                        <h4 className="font-bold text-xs mt-0.5">{d.title}</h4>
-                      </div>
-                      <span
-                        className={`text-[9px] font-mono px-2 py-0.5 rounded-full font-bold uppercase ${
-                          isActive
-                            ? 'bg-amber-500 text-slate-950'
-                            : isDone
-                            ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                            : 'bg-slate-800 text-slate-400'
-                        }`}
-                      >
-                        {isActive ? 'Active' : isDone ? 'Done' : 'Pending'}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
+                      {isActive ? 'Active' : isDone ? 'Done' : isLocked ? 'Locked' : 'Ready'}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
-          )}
+          </div>
 
-          {/* ACTIVE GUIDANCE BAR FOR DRILLS */}
-          {activeTab === 'drills' && currentFingerGuide && (
+          {/* Real-time Anatomical Finger Indicator */}
+          {currentFingerGuide && (
             <div className="bg-slate-900 border border-amber-500/30 rounded-2xl p-4 flex items-center justify-between shadow-lg">
               <div className="flex items-center gap-3">
                 <div
@@ -668,7 +737,7 @@ export const LessonView: React.FC<LessonViewProps> = ({
                 </div>
                 <div>
                   <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-bold block">
-                    Target Keystroke • {drills[activeDrillIndex]?.title}
+                    Drill {activeDrillIndex + 1} • {drills[activeDrillIndex]?.title}
                   </span>
                   <span className="text-sm font-bold text-slate-100">
                     Strike with{' '}
@@ -692,35 +761,11 @@ export const LessonView: React.FC<LessonViewProps> = ({
             </div>
           )}
 
-          {/* STEP 3 FINAL ASSESSMENT BANNER */}
-          {activeTab === 'assessment' && (
-            <div className="bg-gradient-to-r from-amber-500/15 via-amber-500/5 to-slate-900 border border-amber-500/40 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xl">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
-                  <Trophy className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-amber-300">
-                    Step 3: Final Mastery Benchmark Assessment
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    Touch typing mastery requires a <strong>strict minimum 95% accuracy</strong> and <strong>{lesson.minWpm} WPM</strong>.
-                  </p>
-                </div>
-              </div>
-
-              <span className="px-3 py-1 rounded-xl bg-amber-500/10 text-amber-300 border border-amber-500/30 text-xs font-mono font-bold self-start sm:self-auto">
-                Benchmark: ≥95% Acc
-              </span>
-            </div>
-          )}
-
-          {/* INTERACTIVE TYPING BOX */}
+          {/* Interactive Typing Arena */}
           <div
             onClick={() => inputRef.current?.focus()}
             className="relative bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-3xl p-6 sm:p-8 cursor-text select-none shadow-2xl min-h-[200px] flex flex-col justify-center transition-all"
           >
-            {/* Hidden native input */}
             <input
               ref={inputRef}
               type="text"
@@ -728,10 +773,9 @@ export const LessonView: React.FC<LessonViewProps> = ({
               onChange={handleInputChange}
               autoFocus
               className="absolute inset-0 opacity-0 cursor-default"
-              aria-label="Typing lesson input"
+              aria-label="Typing drill input"
             />
 
-            {/* Character-by-Character Visualizer */}
             <div
               className="font-mono text-lg sm:text-2xl leading-relaxed tracking-wider text-left transition-all"
               style={{ fontFamily: "'Fira Code', monospace" }}
@@ -765,7 +809,7 @@ export const LessonView: React.FC<LessonViewProps> = ({
             </div>
           </div>
 
-          {/* Status & Controls Bar */}
+          {/* Status & Restart */}
           <div className="flex items-center justify-between font-mono text-xs text-slate-400 px-2">
             <div className="flex items-center gap-4">
               <span>
@@ -786,9 +830,132 @@ export const LessonView: React.FC<LessonViewProps> = ({
               className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 transition-colors flex items-center gap-1.5"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>Restart Current Exercise</span>
+              <span>Restart Drill</span>
             </button>
           </div>
+        </div>
+      )}
+
+      {/* STEP 3: FINAL ASSESSMENT ARENA */}
+      {activeTab === 'assessment' && (
+        <div className="space-y-5 animate-in fade-in duration-200">
+          {!allDrillsCompleted ? (
+            /* Locked Screen if accessed before completing Drills */
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center space-y-4">
+              <div className="w-16 h-16 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 mx-auto flex items-center justify-center">
+                <Lock className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-black text-slate-100">
+                Final Assessment is Locked
+              </h3>
+              <p className="text-sm text-slate-400 max-w-md mx-auto">
+                You must complete all 3 Guided Drills (Key Isolates, Rhythmic Words, & Contextual Phrasing) to unlock the Step 3 Final Assessment.
+              </p>
+              <button
+                onClick={() => setActiveTab('drills')}
+                className="px-6 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-2xl transition-all shadow-md inline-flex items-center gap-2"
+              >
+                <span>Go to Step 2: Guided Drills</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* Unlocked Assessment Banner */}
+              <div className="bg-gradient-to-r from-amber-500/15 via-amber-500/5 to-slate-900 border border-amber-500/40 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xl">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+                    <Trophy className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-amber-300">
+                      Step 3: Final Mastery Benchmark Assessment
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Institutional touch typing requires a <strong>strict minimum 95% accuracy</strong> and <strong>{lesson.minWpm} WPM</strong>.
+                    </p>
+                  </div>
+                </div>
+
+                <span className="px-3 py-1 rounded-xl bg-amber-500/10 text-amber-300 border border-amber-500/30 text-xs font-mono font-bold self-start sm:self-auto">
+                  Strict Benchmark: ≥95% Acc
+                </span>
+              </div>
+
+              {/* Typing Arena */}
+              <div
+                onClick={() => inputRef.current?.focus()}
+                className="relative bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-3xl p-6 sm:p-8 cursor-text select-none shadow-2xl min-h-[220px] flex flex-col justify-center transition-all"
+              >
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={inputText}
+                  onChange={handleInputChange}
+                  autoFocus
+                  className="absolute inset-0 opacity-0 cursor-default"
+                  aria-label="Final assessment typing input"
+                />
+
+                <div
+                  className="font-mono text-lg sm:text-2xl leading-relaxed tracking-wider text-left transition-all"
+                  style={{ fontFamily: "'Fira Code', monospace" }}
+                >
+                  {activeTargetText.split('').map((char, idx) => {
+                    const isTyped = idx < inputText.length;
+                    const isCurrent = idx === inputText.length;
+                    const isCorrect = isTyped && inputText[idx] === char;
+                    const isWrong = isTyped && inputText[idx] !== char;
+
+                    return (
+                      <span
+                        key={idx}
+                        className={`relative transition-colors ${
+                          isCorrect
+                            ? 'text-slate-100 font-medium'
+                            : isWrong
+                            ? 'text-rose-400 bg-rose-500/20 rounded px-0.5 underline'
+                            : isCurrent
+                            ? 'text-amber-400 font-bold bg-amber-500/10 rounded px-0.5'
+                            : 'text-slate-600'
+                        }`}
+                      >
+                        {isCurrent && (
+                          <span className="absolute -top-1 left-0 bottom-0 w-0.5 bg-amber-400 animate-pulse" />
+                        )}
+                        {char === ' ' && isWrong ? '␣' : char}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Status & Restart */}
+              <div className="flex items-center justify-between font-mono text-xs text-slate-400 px-2">
+                <div className="flex items-center gap-4">
+                  <span>
+                    Typed: <strong className="text-slate-200">{inputText.length}</strong> / {activeTargetText.length}
+                  </span>
+                  <span>
+                    Errors: <strong className="text-rose-400">{currentKeystrokeErrors.length}</strong>
+                  </span>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setInputText('');
+                    setStartTime(null);
+                    setCurrentKeystrokeErrors([]);
+                    setTimeout(() => inputRef.current?.focus(), 50);
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 transition-colors flex items-center gap-1.5"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Restart Assessment</span>
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -819,24 +986,24 @@ export const LessonView: React.FC<LessonViewProps> = ({
               <span className="text-[11px] font-mono uppercase tracking-wider text-amber-400 font-bold">
                 {activeTab === 'assessment'
                   ? 'Step 3: Final Assessment Results'
-                  : `Step 2: Guided Drill ${activeDrillIndex + 1} Complete`}
+                  : `Step 2: Guided Drill ${activeDrillIndex + 1} of 3 Complete`}
               </span>
               <h2 className="text-2xl font-black text-slate-100">
                 {activeTab === 'assessment'
                   ? isNewlyMastered || (lastAttempt.accuracy >= 95 && lastAttempt.wpm >= lesson.minWpm)
                     ? '🎉 Lesson Mastered!'
                     : 'Benchmark Not Met'
-                  : `Drill ${activeDrillIndex + 1} Completed!`}
+                  : `Drill ${activeDrillIndex + 1} Complete!`}
               </h2>
               <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
                 {activeTab === 'assessment' ? (
                   lastAttempt.accuracy >= 95 && lastAttempt.wpm >= lesson.minWpm ? (
-                    'Incredible execution! You passed the strict 95% accuracy benchmark. The next lesson is now unlocked!'
+                    'Incredible work! You satisfied the strict 95% accuracy benchmark. The next lesson is now unlocked!'
                   ) : (
-                    `Mastery requires a strict minimum 95% accuracy (You scored ${lastAttempt.accuracy}%). Focus on accuracy over raw speed and retry!`
+                    `Mastery mandates a strict minimum 95% accuracy (You scored ${lastAttempt.accuracy}%). Focus on eliminating errors and retry.`
                   )
                 ) : activeDrillIndex < 2 ? (
-                  `Great repetition! Proceed to Drill ${activeDrillIndex + 2} of 3 to continue training your reflexes.`
+                  `Great progress! Proceed to Drill ${activeDrillIndex + 2} of 3 to continue training your muscle memory.`
                 ) : (
                   'All 3 Guided Drills completed successfully! Step 3: Final Assessment is now officially unlocked.'
                 )}
@@ -871,7 +1038,7 @@ export const LessonView: React.FC<LessonViewProps> = ({
               </div>
             </div>
 
-            {/* Action Buttons */}
+            {/* Sequential Action Buttons */}
             <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
               <button
                 onClick={() => {
@@ -887,42 +1054,30 @@ export const LessonView: React.FC<LessonViewProps> = ({
                 <span>Retry Exercise</span>
               </button>
 
-              {activeTab === 'drills' && activeDrillIndex < 2 ? (
-                /* Next Drill in Sequence */
+              {activeTab === 'drills' ? (
                 <button
-                  onClick={() => {
-                    setShowResultsModal(false);
-                    setActiveDrillIndex(activeDrillIndex + 1);
-                  }}
+                  onClick={handleNextDrillOrAssessment}
                   className="w-full sm:w-1/2 py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2"
                 >
-                  <span>Start Drill {activeDrillIndex + 2} of 3</span>
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              ) : activeTab === 'drills' && activeDrillIndex === 2 ? (
-                /* All 3 Drills Complete -> Open Final Assessment */
-                <button
-                  onClick={() => {
-                    setShowResultsModal(false);
-                    setLockedNotice(null);
-                    setActiveTab('assessment');
-                  }}
-                  className="w-full sm:w-1/2 py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black text-xs transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2"
-                >
-                  <span>Step 3: Begin Assessment</span>
+                  <span>
+                    {activeDrillIndex === 0
+                      ? 'Proceed to Drill 2 (2/3)'
+                      : activeDrillIndex === 1
+                      ? 'Proceed to Drill 3 (3/3)'
+                      : 'Unlock Final Assessment'}
+                  </span>
                   <ChevronRight className="w-4 h-4" />
                 </button>
               ) : isNewlyMastered && nextLessonInfo && onNextLesson ? (
-                /* Passed Final Assessment -> Next Lesson */
                 <button
                   onClick={() => {
                     setShowResultsModal(false);
                     onNextLesson(nextLessonInfo.lesson.id);
                   }}
-                  className="w-full sm:w-1/2 py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2"
+                  className="w-full sm:w-1/2 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black text-xs transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
                 >
-                  <span>Next Lesson</span>
-                  <ChevronRight className="w-4 h-4" />
+                  <span>Next Lesson: Learn Concept</span>
+                  <ArrowRight className="w-4 h-4" />
                 </button>
               ) : (
                 <button

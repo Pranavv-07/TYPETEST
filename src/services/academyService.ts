@@ -91,6 +91,145 @@ export function saveStudentAcademyProfile(profile: StudentAcademyProfile): void 
   }
 }
 
+// Calculate streak from date strings
+export function calculateStreakFromDates(dateStrings: string[]): {
+  currentStreak: number;
+  longestStreak: number;
+  practicedToday: boolean;
+  activityDates: string[];
+} {
+  if (!dateStrings || dateStrings.length === 0) {
+    return { currentStreak: 0, longestStreak: 0, practicedToday: false, activityDates: [] };
+  }
+
+  // Format to unique local YYYY-MM-DD
+  const uniqueDays = Array.from(
+    new Set(
+      dateStrings.map(d => {
+        try {
+          const dateObj = new Date(d);
+          if (isNaN(dateObj.getTime())) return '';
+          const year = dateObj.getFullYear();
+          const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+          const day = String(dateObj.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        } catch {
+          return '';
+        }
+      }).filter(Boolean)
+    )
+  ).sort().reverse(); // most recent first
+
+  if (uniqueDays.length === 0) {
+    return { currentStreak: 0, longestStreak: 0, practicedToday: false, activityDates: [] };
+  }
+
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  
+  const yesterdayObj = new Date(now);
+  yesterdayObj.setDate(yesterdayObj.getDate() - 1);
+  const yesterdayStr = `${yesterdayObj.getFullYear()}-${String(yesterdayObj.getMonth() + 1).padStart(2, '0')}-${String(yesterdayObj.getDate()).padStart(2, '0')}`;
+
+  const practicedToday = uniqueDays.includes(todayStr);
+
+  let currentStreak = 0;
+  if (uniqueDays[0] === todayStr || uniqueDays[0] === yesterdayStr) {
+    let checkDate = new Date(uniqueDays[0] === todayStr ? now : yesterdayObj);
+    for (const day of uniqueDays) {
+      const year = checkDate.getFullYear();
+      const month = String(checkDate.getMonth() + 1).padStart(2, '0');
+      const d = String(checkDate.getDate()).padStart(2, '0');
+      const expectedDayStr = `${year}-${month}-${d}`;
+      if (day === expectedDayStr) {
+        currentStreak++;
+        checkDate.setDate(checkDate.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+  }
+
+  // Calculate longest streak
+  let longestStreak = currentStreak;
+  const ascDays = [...uniqueDays].reverse();
+  let tempStreak = 0;
+  let prevDate: Date | null = null;
+  for (const day of ascDays) {
+    const curDate = new Date(`${day}T00:00:00`);
+    if (!prevDate) {
+      tempStreak = 1;
+    } else {
+      const diffTime = curDate.getTime() - prevDate.getTime();
+      const diffDays = Math.round(diffTime / (1000 * 3600 * 24));
+      if (diffDays === 1) {
+        tempStreak++;
+      } else if (diffDays > 1) {
+        tempStreak = 1;
+      }
+    }
+    prevDate = curDate;
+    if (tempStreak > longestStreak) {
+      longestStreak = tempStreak;
+    }
+  }
+
+  return {
+    currentStreak: Math.max(0, currentStreak),
+    longestStreak: Math.max(currentStreak, longestStreak),
+    practicedToday,
+    activityDates: uniqueDays,
+  };
+}
+
+// Record that a student reviewed the concept for a lesson
+export function recordConceptRead(studentId: string, lessonId: string): StudentAcademyProfile {
+  const profile = getStudentAcademyProfile(studentId);
+  const current = profile.lessonProgress[lessonId] || {
+    lessonId,
+    studentId,
+    status: 'unlocked',
+    attemptsCount: 0,
+    bestWpm: 0,
+    bestAccuracy: 0,
+  };
+  current.conceptRead = true;
+  profile.lessonProgress[lessonId] = current;
+  saveStudentAcademyProfile(profile);
+  return profile;
+}
+
+// Record completion of a specific drill number (1, 2, or 3)
+export function recordStudentDrillCompletion(
+  studentId: string,
+  lessonId: string,
+  drillNumber: number
+): { profile: StudentAcademyProfile; allDrillsCompleted: boolean } {
+  const profile = getStudentAcademyProfile(studentId);
+  const current = profile.lessonProgress[lessonId] || {
+    lessonId,
+    studentId,
+    status: 'unlocked',
+    attemptsCount: 0,
+    bestWpm: 0,
+    bestAccuracy: 0,
+  };
+
+  const existingDrills = new Set(current.completedDrillNumbers || []);
+  existingDrills.add(drillNumber);
+  current.completedDrillNumbers = Array.from(existingDrills).sort((a, b) => a - b);
+
+  // If drills 1, 2, and 3 are all completed
+  const allCompleted = [1, 2, 3].every(n => existingDrills.has(n));
+  if (allCompleted) {
+    current.guidedCompleted = true;
+  }
+
+  profile.lessonProgress[lessonId] = current;
+  saveStudentAcademyProfile(profile);
+  return { profile, allDrillsCompleted: allCompleted };
+}
+
 // Recalculate locks for all lessons based on prerequisites
 export function refreshProfileLockStatus(profile: StudentAcademyProfile): StudentAcademyProfile {
   const curriculum = getActiveCurriculum();
@@ -125,6 +264,9 @@ export function refreshProfileLockStatus(profile: StudentAcademyProfile): Studen
             attemptsCount: existing?.attemptsCount || 0,
             bestWpm: existing?.bestWpm || 0,
             bestAccuracy: existing?.bestAccuracy || 0,
+            completedDrillNumbers: existing?.completedDrillNumbers || [],
+            guidedCompleted: existing?.guidedCompleted || false,
+            conceptRead: existing?.conceptRead || false,
           };
         }
         continue;
@@ -140,6 +282,9 @@ export function refreshProfileLockStatus(profile: StudentAcademyProfile): Studen
             attemptsCount: existing?.attemptsCount || 0,
             bestWpm: existing?.bestWpm || 0,
             bestAccuracy: existing?.bestAccuracy || 0,
+            completedDrillNumbers: existing?.completedDrillNumbers || [],
+            guidedCompleted: existing?.guidedCompleted || false,
+            conceptRead: existing?.conceptRead || false,
           };
         }
         if (existing?.status !== 'mastered' && !firstPendingFound) {
@@ -159,6 +304,9 @@ export function refreshProfileLockStatus(profile: StudentAcademyProfile): Studen
           attemptsCount: existing?.attemptsCount || 0,
           bestWpm: existing?.bestWpm || 0,
           bestAccuracy: existing?.bestAccuracy || 0,
+          completedDrillNumbers: existing?.completedDrillNumbers || [],
+          guidedCompleted: existing?.guidedCompleted || false,
+          conceptRead: existing?.conceptRead || false,
           lockReason: `Complete all lessons and assessment of Level ${level.prerequisiteLevelId} to unlock this level.`,
         };
         continue;
@@ -177,6 +325,9 @@ export function refreshProfileLockStatus(profile: StudentAcademyProfile): Studen
             attemptsCount: existing?.attemptsCount || 0,
             bestWpm: existing?.bestWpm || 0,
             bestAccuracy: existing?.bestAccuracy || 0,
+            completedDrillNumbers: existing?.completedDrillNumbers || [],
+            guidedCompleted: existing?.guidedCompleted || false,
+            conceptRead: existing?.conceptRead || false,
             lockReason:
               lesson.prerequisiteReason ||
               `Complete the previous lesson with at least ${lesson.minAccuracy}% accuracy to unlock.`,
@@ -194,6 +345,9 @@ export function refreshProfileLockStatus(profile: StudentAcademyProfile): Studen
           attemptsCount: existing?.attemptsCount || 0,
           bestWpm: existing?.bestWpm || 0,
           bestAccuracy: existing?.bestAccuracy || 0,
+          completedDrillNumbers: existing?.completedDrillNumbers || [],
+          guidedCompleted: existing?.guidedCompleted || false,
+          conceptRead: existing?.conceptRead || false,
         };
       }
 
@@ -205,11 +359,23 @@ export function refreshProfileLockStatus(profile: StudentAcademyProfile): Studen
     }
   }
 
+  // Calculate streak from attempts history
+  const attempts = getStudentAttemptHistory(profile.studentId);
+  const attemptDates = attempts.map(a => a.timestamp);
+  if (profile.lastActiveDate) {
+    attemptDates.push(profile.lastActiveDate);
+  }
+  const streakStats = calculateStreakFromDates(attemptDates);
+
   const updatedProfile: StudentAcademyProfile = {
     ...profile,
     lessonProgress: updatedProgress,
     currentLevelId: highestLevel,
     currentLessonId: activeLessonId,
+    streakDays: streakStats.currentStreak,
+    longestStreakDays: streakStats.longestStreak,
+    practicedToday: streakStats.practicedToday,
+    activityDates: streakStats.activityDates,
   };
 
   saveStudentAcademyProfile(updatedProfile);

@@ -1,5 +1,5 @@
 import { useServerTime } from "../hooks/useServerTime";
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { TypingTest, StudentCertificate } from '../types';
 import { CertificateModal } from './CertificateModal';
@@ -7,6 +7,7 @@ import { LeaderboardModal } from './LeaderboardModal';
 import { StudentDashboard } from './StudentDashboard';
 import { StudentLeaderboard } from './StudentLeaderboard';
 import { PerformanceOverTimeChart } from './PerformanceOverTimeChart';
+import { getStudentAttemptHistory, calculateStreakFromDates } from '../services/academyService';
 import {
   GraduationCap,
   Play,
@@ -105,17 +106,36 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
       ) / 10
     : 100;
 
+  // Daily Streak calculation
+  const streakStats = useMemo(() => {
+    const dates: string[] = [];
+    studentSubmissions.forEach(s => {
+      if (s.timestamp) dates.push(s.timestamp);
+    });
+    if (currentUser?.id) {
+      const attempts = getStudentAttemptHistory(currentUser.id);
+      attempts.forEach(a => {
+        if (a.timestamp) dates.push(a.timestamp);
+      });
+    }
+    return calculateStreakFromDates(dates);
+  }, [studentSubmissions, currentUser?.id]);
+
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-6">
       {/* Student Welcome & Profile Banner */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-6 shadow-xl relative overflow-hidden">
         <div className="space-y-2 z-10">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
               Verified Candidate
             </span>
             <span className="text-xs font-mono text-cyan-400 font-bold">
               Roll No: {currentUser?.rollNo || currentUser?.username}
+            </span>
+            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-orange-500/15 text-orange-400 border border-orange-500/30 flex items-center gap-1">
+              <Flame className="w-3.5 h-3.5 text-orange-400 fill-orange-400 animate-pulse" />
+              <span>{streakStats.currentStreak} Day Streak</span>
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-100">{currentUser?.name}</h1>
@@ -139,8 +159,32 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
         <div className="absolute -right-12 -bottom-12 w-48 h-48 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none" />
       </div>
 
-      {/* Metrics Summary Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {/* Metrics Summary Strip (Featuring Daily Streak with Fire Icon) */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        
+        {/* Daily Streak Card with Fire Icon */}
+        <div className="bg-gradient-to-br from-orange-500/15 via-slate-900 to-slate-900 border border-orange-500/30 p-4 rounded-2xl relative overflow-hidden shadow-md col-span-2 sm:col-span-1">
+          <div className="flex items-center justify-between text-[11px] font-mono text-orange-400 font-bold">
+            <span>DAILY STREAK</span>
+            <div className="p-1 rounded-lg bg-orange-500/20 text-orange-400">
+              <Flame className="w-4 h-4 fill-orange-400 animate-pulse" />
+            </div>
+          </div>
+          <div className="flex items-baseline gap-1.5 mt-1">
+            <span className="text-3xl font-black font-mono text-orange-400">
+              {streakStats.currentStreak}
+            </span>
+            <span className="text-xs text-slate-400 font-mono font-bold">DAYS</span>
+          </div>
+          <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
+            {streakStats.practicedToday ? (
+              <span className="text-emerald-400 font-medium">✓ Practiced today</span>
+            ) : (
+              <span className="text-amber-300">Practice today to extend</span>
+            )}
+          </div>
+        </div>
+
         <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl">
           <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
             <span>ASSIGNED TESTS</span>
@@ -164,7 +208,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
         <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl">
           <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
             <span>BEST SPEED</span>
-            <Flame className="w-4 h-4 text-cyan-400" />
+            <Zap className="w-4 h-4 text-cyan-400" />
           </div>
           <div className="text-3xl font-black font-mono text-cyan-400 mt-1">{bestWpm} <span className="text-xs text-slate-400">WPM</span></div>
           <div className="text-[10px] text-slate-500 mt-0.5">Net verified speed</div>
