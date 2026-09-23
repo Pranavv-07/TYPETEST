@@ -260,6 +260,16 @@ export interface KeyFingerGuide {
   label: string;
 }
 
+export interface GuidedDrill {
+  id: string;
+  drillNumber: number;
+  title: string;
+  subtitle: string;
+  drillType: 'bigram' | 'words' | 'phrasing';
+  targetText: string;
+  focusHint: string;
+}
+
 export interface AcademyLesson {
   id: string;
   levelId: number;
@@ -273,8 +283,9 @@ export interface AcademyLesson {
   guidedText: string;
   practiceText: string;
   assessmentText: string;
+  drills?: GuidedDrill[]; // 2-3 structured progressive drills
   assessmentDuration: number; // in seconds
-  minAccuracy: number; // e.g. 95%
+  minAccuracy: number; // strictly 95% minimum
   minWpm: number; // e.g. 20 WPM
   prerequisiteLessonId?: string;
   prerequisiteReason?: string;
