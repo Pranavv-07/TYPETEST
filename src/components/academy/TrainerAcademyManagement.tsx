@@ -326,14 +326,14 @@ export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> =
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-800/50 px-1.5 py-0.5 rounded">
-                          ≥{lsn.passingCriteria.minAccuracy}% Acc
+                          ≥{lsn.minAccuracy || 95}% Acc
                         </span>
                         <button
                           onClick={() => {
                             setEditingLesson(lsn);
-                            setEditMinAcc(lsn.passingCriteria.minAccuracy);
-                            setEditMinWpm(lsn.passingCriteria.minWpm);
-                            setEditDuration(lsn.passingCriteria.assessmentDuration || 60);
+                            setEditMinAcc(lsn.minAccuracy || 95);
+                            setEditMinWpm(lsn.minWpm || 20);
+                            setEditDuration(lsn.assessmentDuration || 60);
                           }}
                           className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-emerald-400"
                         >
