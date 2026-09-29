@@ -8,7 +8,8 @@ import { StudentDashboard } from './StudentDashboard';
 import { StudentLeaderboard } from './StudentLeaderboard';
 import { PerformanceOverTimeChart } from './PerformanceOverTimeChart';
 import { D3FingerHeatmap } from './D3FingerHeatmap';
-import { getStudentAttemptHistory, calculateStreakFromDates } from '../services/academyService';
+import { StudentAchievements } from './StudentAchievements';
+import { getStudentAttemptHistory, calculateStreakFromDates, getStudentAcademyProfile } from '../services/academyService';
 import { formatISTDateTime, formatISTDate } from '../utils/dateUtils';
 import {
   GraduationCap,
@@ -48,7 +49,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
   onOpenAcademy
 }) => {
   const { currentUser, classes, tests, submissions, certificates } = useApp();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'biometrics' | 'assigned' | 'leaderboard' | 'history' | 'certificates'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'achievements' | 'biometrics' | 'assigned' | 'leaderboard' | 'history' | 'certificates'>('dashboard');
   const [selectedCertificate, setSelectedCertificate] = useState<StudentCertificate | null>(null);
   const [selectedLeaderboardTest, setSelectedLeaderboardTest] = useState<TypingTest | null>(null);
 
@@ -60,18 +61,18 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
   const now = getServerDate();
 
   // Filter assigned tests:
-  // 1. Must be assigned to this student specifically OR their enrolled class
-  // 2. Invisible before start time (startAt > now)
+  // 1. Must be assigned to this student specifically OR their enrolled class OR all classes
   const visibleAssignedTests = tests.filter(t => {
     const isAssignedToStudent =
       (t.assignedStudentIds && currentUser && t.assignedStudentIds.includes(currentUser.id)) ||
-      (t.assignedClassIds && studentClass && t.assignedClassIds.includes(studentClass.id));
+      (t.assignedClassIds && (
+        (currentUser?.classId && t.assignedClassIds.includes(currentUser.classId)) ||
+        (studentClass && t.assignedClassIds.includes(studentClass.id)) ||
+        t.assignedClassIds.includes('all')
+      )) ||
+      (!t.assignedClassIds || t.assignedClassIds.length === 0);
 
     if (!isAssignedToStudent) return false;
-
-    if (t.startAt && new Date(t.startAt) > now) {
-      return false; // Invisible before start
-    }
 
     return true;
   });
@@ -236,6 +237,17 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
           <span>Dashboard</span>
         </button>
         <button
+          onClick={() => setActiveTab('achievements')}
+          className={`pb-3 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all cursor-pointer ${
+            activeTab === 'achievements'
+              ? 'border-amber-400 text-amber-400'
+              : 'border-transparent text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Trophy className="w-4 h-4 text-amber-400" />
+          <span>Achievements & Badges</span>
+        </button>
+        <button
           onClick={() => setActiveTab('biometrics')}
           className={`pb-3 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all cursor-pointer ${
             activeTab === 'biometrics'
@@ -322,6 +334,15 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
                 onOpenPractice();
               }
             }}
+          />
+        )}
+        {activeTab === 'achievements' && (
+          <StudentAchievements
+            studentProfile={getStudentAcademyProfile(currentUser?.id || 'std-24b11cs355')}
+            submissions={studentSubmissions}
+            rollNo={currentUser?.rollNo || currentUser?.username}
+            onOpenAcademy={onOpenAcademy}
+            onOpenPractice={onOpenPractice}
           />
         )}
         {activeTab === 'biometrics' && (

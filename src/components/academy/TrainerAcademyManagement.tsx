@@ -170,15 +170,15 @@ export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> =
   const handleCreateAssignment = (e: React.FormEvent) => {
     e.preventDefault();
     const targetClass = classes.find(c => c.id === assignClassId);
-    if (!targetClass) return;
+    const resolvedClassName = assignClassId === 'all' ? 'All Batches & Classes' : (targetClass?.name || 'Assigned Class');
 
     saveAcademyAssignment({
-      title: assignTitle,
+      title: assignTitle.trim(),
       classId: assignClassId,
-      className: targetClass.name,
+      className: resolvedClassName,
       trainerId,
       curriculumId: curriculum.id,
-      levelIds: assignLevels,
+      levelIds: assignLevels.length > 0 ? assignLevels : [1, 2, 3, 4, 5, 6, 7],
       minWpm: 20,
       minAccuracy: 95,
       startDate: assignStartDate,
@@ -630,8 +630,9 @@ export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> =
                 <select
                   value={assignClassId}
                   onChange={e => setAssignClassId(e.target.value)}
-                  className="w-full p-3 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                  className="w-full p-3 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 font-mono"
                 >
+                  <option value="all">🌟 All Batches & Classes (Global Access)</option>
                   {classes.map(c => (
                     <option key={c.id} value={c.id}>
                       {c.name}
