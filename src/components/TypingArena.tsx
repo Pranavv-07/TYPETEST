@@ -5,8 +5,10 @@ import { MONKEYTYPE_WORDS } from '../data/initialData';
 import { soundController } from '../utils/audio';
 import confetti from 'canvas-confetti';
 import { D3SessionChart } from './D3SessionChart';
+import { D3FingerHeatmap } from './D3FingerHeatmap';
 import { MechanicalKeyboard } from './MechanicalKeyboard';
 import { formatISTDateTime } from '../utils/dateUtils';
+import { recordKeystrokeEvent } from '../services/keystrokeAnalyticsService';
 import {
   RotateCcw,
   Clock,
@@ -22,7 +24,8 @@ import {
   TrendingUp,
   Award,
   Hash,
-  Delete
+  Delete,
+  Hand
 } from 'lucide-react';
 
 interface TypingArenaProps {
@@ -160,6 +163,8 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
   const activeWordRef = useRef<HTMLSpanElement>(null);
   const startTimeRef = useRef<number | null>(null);
   const lastRecordedSecondRef = useRef<number>(0);
+  const lastKeyTimestampRef = useRef<number>(Date.now());
+  const [showBiometrics, setShowBiometrics] = useState<boolean>(false);
   const statsRef = useRef<{
     correctChars: number;
     incorrectChars: number;
@@ -432,10 +437,15 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
       return;
     }
 
+    const now = Date.now();
+    const latency = Math.min(600, now - lastKeyTimestampRef.current);
+    lastKeyTimestampRef.current = now;
+
     if (e.key === ' ' || e.key === 'Enter') {
       e.preventDefault();
       if (!inputVal.trim() && inputVal !== '') return;
 
+      recordKeystrokeEvent(currentUser?.id || 'std-24b11cs355', ' ', ' ', latency);
       totalKeystrokesRef.current += 1;
       if (inputVal === currentTargetWord) {
         correctKeystrokesRef.current += 1;
@@ -469,6 +479,10 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
     if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
       totalKeystrokesRef.current += 1;
       const charIndex = inputVal.length;
+      const expectedChar = charIndex < currentTargetWord.length ? currentTargetWord[charIndex] : e.key;
+
+      recordKeystrokeEvent(currentUser?.id || 'std-24b11cs355', expectedChar, e.key, latency);
+
       if (charIndex < currentTargetWord.length && e.key === currentTargetWord[charIndex]) {
         correctKeystrokesRef.current += 1;
       } else {
@@ -803,7 +817,44 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
             </div>
           </div>
 
-          <D3SessionChart data={speedHistory} height={220} isLive={false} />
+          {/* Chart & Biometrics Selector */}
+          <div className="flex border-b border-slate-800 gap-4 text-xs font-bold pt-2">
+            <button
+              onClick={() => setShowBiometrics(false)}
+              className={`pb-2.5 flex items-center gap-1.5 border-b-2 transition-all cursor-pointer ${
+                !showBiometrics
+                  ? 'border-emerald-400 text-emerald-400'
+                  : 'border-transparent text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <TrendingUp className="w-3.5 h-3.5" />
+              <span>Speed & Error Timeline</span>
+            </button>
+            <button
+              onClick={() => setShowBiometrics(true)}
+              className={`pb-2.5 flex items-center gap-1.5 border-b-2 transition-all cursor-pointer ${
+                showBiometrics
+                  ? 'border-emerald-400 text-emerald-400'
+                  : 'border-transparent text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Hand className="w-3.5 h-3.5" />
+              <span>Finger-Position & Weak Key Heatmap (D3)</span>
+            </button>
+          </div>
+
+          {!showBiometrics ? (
+            <D3SessionChart data={speedHistory} height={220} isLive={false} />
+          ) : (
+            <D3FingerHeatmap
+              studentId={currentUser?.id || 'std-24b11cs355'}
+              onStartTargetedDrill={(drillText, title) => {
+                setTargetText(drillText);
+                setWords(drillText.match(/\s*\S+/g) || []);
+                resetTest();
+              }}
+            />
+          )}
         </div>
       )}
     </div>

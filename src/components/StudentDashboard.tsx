@@ -14,6 +14,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { PerformanceOverTimeChart } from './PerformanceOverTimeChart';
+import { D3FingerHeatmap } from './D3FingerHeatmap';
 import {
   getStudentAcademyProfile,
   getActiveCurriculum,
@@ -23,9 +24,13 @@ import {
 
 interface StudentDashboardProps {
   onOpenAcademy?: () => void;
+  onStartPractice?: (text?: string, title?: string) => void;
 }
 
-export const StudentDashboard: React.FC<StudentDashboardProps> = ({ onOpenAcademy }) => {
+export const StudentDashboard: React.FC<StudentDashboardProps> = ({
+  onOpenAcademy,
+  onStartPractice
+}) => {
   const { currentUser, submissions } = useApp();
 
   const academyProfile = useMemo(() => {
@@ -79,16 +84,13 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ onOpenAcadem
 
     mySubmissions.forEach(sub => {
       testsCompleted++;
+      if (sub.netWpm > bestWpm) bestWpm = sub.netWpm;
       sumWpm += sub.netWpm;
       sumAccuracy += sub.accuracy;
-      totalTime += sub.timeSpentSeconds || 0;
-      if (sub.netWpm > bestWpm) bestWpm = sub.netWpm;
+      totalTime += sub.timeTaken || 60;
     });
 
-    const avgWpm = testsCompleted ? Math.round(sumWpm / testsCompleted) : 0;
-    const avgAccuracy = testsCompleted ? Math.round(sumAccuracy / testsCompleted) : 0;
-    const totalScore = Math.round(((avgWpm * avgAccuracy) / 100) * testsCompleted);
-
+    // Calculate daily streak from combined test and drill dates
     const dates: string[] = [];
     mySubmissions.forEach(s => {
       if (s.timestamp) dates.push(s.timestamp);
@@ -99,24 +101,31 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ onOpenAcadem
         if (a.timestamp) dates.push(a.timestamp);
       });
     }
-    const streakResult = calculateStreakFromDates(dates);
+    const streakData = calculateStreakFromDates(dates);
 
     return {
       bestWpm,
-      avgWpm,
-      avgAccuracy,
+      avgWpm: testsCompleted > 0 ? Math.round(sumWpm / testsCompleted) : 0,
+      avgAccuracy: testsCompleted > 0 ? Math.round((sumAccuracy / testsCompleted) * 10) / 10 : 100,
+      totalTimeMinutes: Math.round(totalTime / 60),
       testsCompleted,
-      totalTime,
-      totalScore,
-      currentStreak: streakResult.currentStreak,
-      practicedToday: streakResult.practicedToday
+      currentStreak: streakData.currentStreak,
+      practicedToday: streakData.practicedToday,
     };
   }, [mySubmissions, currentUser?.id]);
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-slate-100">Performance Summary</h2>
+    <div className="space-y-6">
+      {/* Student Top Performance Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-sm">
+        <div>
+          <h2 className="text-xl font-black text-slate-100 flex items-center gap-2">
+            <span>Overall Diagnostic Performance Overview</span>
+          </h2>
+          <p className="text-xs text-slate-400">
+            Real-time metric telemetry computed from institutional benchmarks and academy drills.
+          </p>
+        </div>
         <span className="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20">
           DOTT Verified Record
         </span>
@@ -210,6 +219,16 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ onOpenAcadem
           </button>
         )}
       </div>
+
+      {/* D3.js Finger Position & Struggling Keys Heatmap Visualization */}
+      <D3FingerHeatmap
+        studentId={currentUser?.id || 'std-24b11cs355'}
+        onStartTargetedDrill={(drillText, title) => {
+          if (onStartPractice) {
+            onStartPractice(drillText, title);
+          }
+        }}
+      />
 
       {/* Speed & Accuracy Over Time Chart */}
       <PerformanceOverTimeChart submissions={mySubmissions} />

@@ -7,6 +7,7 @@ import { LeaderboardModal } from './LeaderboardModal';
 import { StudentDashboard } from './StudentDashboard';
 import { StudentLeaderboard } from './StudentLeaderboard';
 import { PerformanceOverTimeChart } from './PerformanceOverTimeChart';
+import { D3FingerHeatmap } from './D3FingerHeatmap';
 import { getStudentAttemptHistory, calculateStreakFromDates } from '../services/academyService';
 import { formatISTDateTime, formatISTDate } from '../utils/dateUtils';
 import {
@@ -29,7 +30,8 @@ import {
   Check,
   LayoutDashboard,
   Swords,
-  User
+  User,
+  Hand
 } from 'lucide-react';
 
 interface StudentPortalProps {
@@ -46,7 +48,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
   onOpenAcademy
 }) => {
   const { currentUser, classes, tests, submissions, certificates } = useApp();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'assigned' | 'leaderboard' | 'history' | 'certificates'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'biometrics' | 'assigned' | 'leaderboard' | 'history' | 'certificates'>('dashboard');
   const [selectedCertificate, setSelectedCertificate] = useState<StudentCertificate | null>(null);
   const [selectedLeaderboardTest, setSelectedLeaderboardTest] = useState<TypingTest | null>(null);
 
@@ -234,6 +236,17 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
           <span>Dashboard</span>
         </button>
         <button
+          onClick={() => setActiveTab('biometrics')}
+          className={`pb-3 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all cursor-pointer ${
+            activeTab === 'biometrics'
+              ? 'border-emerald-400 text-emerald-400'
+              : 'border-transparent text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Hand className="w-4 h-4" />
+          <span>Finger Heatmap & Analytics</span>
+        </button>
+        <button
           onClick={() => setActiveTab('assigned')}
           className={`pb-3 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all cursor-pointer ${
             activeTab === 'assigned'
@@ -289,7 +302,48 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
       </div>
 
       <div className="pt-2">
-        {activeTab === 'dashboard' && <StudentDashboard onOpenAcademy={onOpenAcademy} />}
+        {activeTab === 'dashboard' && (
+          <StudentDashboard
+            onOpenAcademy={onOpenAcademy}
+            onStartPractice={(drillText, title) => {
+              if (drillText) {
+                onStartAssessment({
+                  id: `targeted-drill-${Date.now()}`,
+                  title: title || 'Targeted Weak-Key Remediation Assessment',
+                  category: 'standard',
+                  content: drillText,
+                  timeLimit: 60,
+                  minAccuracy: 95,
+                  assignedClassIds: [],
+                  isPrebuilt: false,
+                  createdBy: 'D3 Biometrics Engine'
+                });
+              } else {
+                onOpenPractice();
+              }
+            }}
+          />
+        )}
+        {activeTab === 'biometrics' && (
+          <div className="space-y-4">
+            <D3FingerHeatmap
+              studentId={currentUser?.id || 'std-24b11cs355'}
+              onStartTargetedDrill={(drillText, title) => {
+                onStartAssessment({
+                  id: `targeted-drill-${Date.now()}`,
+                  title: title || 'Targeted Weak-Key Remediation Assessment',
+                  category: 'standard',
+                  content: drillText,
+                  timeLimit: 60,
+                  minAccuracy: 95,
+                  assignedClassIds: [],
+                  isPrebuilt: false,
+                  createdBy: 'D3 Biometrics Engine'
+                });
+              }}
+            />
+          </div>
+        )}
         {activeTab === 'leaderboard' && <StudentLeaderboard />}
       </div>
 
