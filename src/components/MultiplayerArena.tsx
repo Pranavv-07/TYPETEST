@@ -20,7 +20,8 @@ import {
   Target,
   Clock,
   Car,
-  Rocket
+  Rocket,
+  Bot
 } from 'lucide-react';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import confetti from 'canvas-confetti';
@@ -35,7 +36,7 @@ const PASSAGES = [
   "Typing speed is a superpower for modern creators. As your fingers glide effortlessly across mechanical keys, thoughts materialize directly onto the digital canvas with lightning velocity."
 ];
 
-const RACER_ICONS = ['🏎️', '🚀', '⚡', '🐆', '🏎️', '🏍️', '🛸'];
+const RACER_ICONS = ['🏎️', '🚀', '⚡', '🐆', '🏍️', '🛸', '🏎️'];
 
 interface PlayerState {
   id: string;
@@ -49,9 +50,10 @@ interface PlayerState {
   finishTime?: number;
   finishRank?: number;
   avatarIcon?: string;
+  isBot?: boolean;
+  targetWpm?: number;
 }
 
-// Word renderer matching the standard TypingArena character-by-character flow
 const MultiplayerWordRenderer: React.FC<{
   rawWord: string;
   wIdx: number;
@@ -66,24 +68,23 @@ const MultiplayerWordRenderer: React.FC<{
     <span
       ref={isActive ? (activeWordRef as any) : null}
       className={`inline-block py-1 rounded transition-colors mr-2.5 ${
-        isActive ? 'bg-slate-800/80 px-1.5 ring-1 ring-amber-400/40' : ''
+        isActive ? 'bg-slate-800/80 px-1.5 ring-1 ring-emerald-400/40' : ''
       }`}
     >
       {word.split('').map((char, cIdx) => {
-        let charColor = 'text-slate-500'; // untyped
+        let charColor = 'text-slate-500';
         let bg = '';
 
         if (isActive) {
           if (cIdx < currentInput.length) {
             if (currentInput[cIdx] === char) {
-              charColor = 'text-emerald-400 font-semibold'; // correct
+              charColor = 'text-emerald-400 font-semibold';
             } else {
               charColor = 'text-rose-400 font-semibold';
-              bg = 'bg-rose-500/25'; // incorrect
+              bg = 'bg-rose-500/25';
             }
           }
         } else if (typedWord !== undefined) {
-          // Previously typed word
           if (cIdx < typedWord.length) {
             charColor = typedWord[cIdx] === char ? 'text-emerald-400' : 'text-rose-400';
           } else {
@@ -96,14 +97,13 @@ const MultiplayerWordRenderer: React.FC<{
         return (
           <span key={cIdx} className="relative inline-block">
             {isCaretHere && (
-              <span className="absolute -left-[1px] top-1 bottom-1 w-[2.5px] bg-amber-400 animate-pulse rounded-full shadow-[0_0_8px_#f59e0b]" />
+              <span className="absolute -left-[1px] top-1 bottom-1 w-[2.5px] bg-emerald-400 animate-pulse rounded-full shadow-[0_0_8px_#10b981]" />
             )}
             <span className={`${charColor} ${bg} rounded-sm px-[0.5px]`}>{char}</span>
           </span>
         );
       })}
 
-      {/* Extra characters typed beyond word length */}
       {isActive &&
         currentInput.length > word.length &&
         currentInput.substring(word.length).split('').map((char, idx) => (
@@ -120,7 +120,6 @@ const MultiplayerWordRenderer: React.FC<{
 export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) => {
   const { currentUser, soundEnabled } = useApp();
 
-  // Create a persistent guest racer if not logged in
   const fallbackGuest = useMemo(
     () => ({
       id: `guest-${Math.random().toString(36).substring(2, 8)}`,
@@ -155,7 +154,6 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
   const [myProgress, setMyProgress] = useState(0);
   const [myFinishRank, setMyFinishRank] = useState<number | null>(null);
 
-  // References to prevent closure tearing
   const totalKeystrokesRef = useRef(0);
   const correctKeystrokesRef = useRef(0);
   const incorrectKeystrokesRef = useRef(0);
@@ -174,7 +172,6 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
   const activeWordRef = useRef<HTMLSpanElement>(null);
   const countdownIntervalRef = useRef<any>(null);
 
-  // Unique avatar icon for this session
   const myAvatarIcon = useMemo(() => {
     const hash = (activeUser.name || 'player')
       .split('')
@@ -182,9 +179,7 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
     return RACER_ICONS[hash % RACER_ICONS.length];
   }, [activeUser.name]);
 
-  // Dual-layer broadcaster: Supabase Realtime + local BroadcastChannel (for 0ms multi-tab testing)
   const broadcastEvent = useCallback((event: string, payload: any) => {
-    // 1. Send via Supabase Realtime
     if (channelRef.current) {
       try {
         channelRef.current.send({
@@ -196,7 +191,6 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
         console.error('Supabase broadcast failed', e);
       }
     }
-    // 2. Send via local BroadcastChannel
     if (localBroadcastRef.current) {
       try {
         localBroadcastRef.current.postMessage({ event, payload });
@@ -206,7 +200,6 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
     }
   }, []);
 
-  // Synchronized countdown trigger using authoritative timestamp
   const handleStartCountdownAt = useCallback((targetStartAt: number) => {
     setRoomState('countdown');
     clearInterval(countdownIntervalRef.current);
@@ -230,7 +223,6 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
     countdownIntervalRef.current = setInterval(updateCountdown, 50);
   }, []);
 
-  // Shared event dispatcher for incoming messages
   const handleIncomingMessage = useCallback(
     (event: string, payload: any) => {
       if (event === 'request_room_info') {
@@ -285,7 +277,6 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
     [activeUser.id, broadcastEvent, handleStartCountdownAt]
   );
 
-  // Set up Channel Subscription - ONLY dependent on roomCode and activeUser.id
   useEffect(() => {
     if (!roomCode) return;
 
@@ -302,7 +293,6 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
       avatarIcon: myAvatarIcon
     };
 
-    // 1. Local BroadcastChannel for instant cross-tab sync
     let localBc: BroadcastChannel | null = null;
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       localBc = new BroadcastChannel(`testtype-room-${roomCode}`);
@@ -314,7 +304,6 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
       localBroadcastRef.current = localBc;
     }
 
-    // 2. Supabase Realtime Channel
     const channel = supabase.channel(`multiplayer-lobby-${roomCode}`, {
       config: {
         presence: { key: myId },
@@ -343,7 +332,6 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
           await channel.track(initialPlayerState);
           setRoomState('waiting');
 
-          // Request room text if we are a joiner
           if (hostIdRef.current !== myId) {
             broadcastEvent('request_room_info', {});
           }
@@ -359,7 +347,45 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
     };
   }, [roomCode, activeUser.id, activeUser.name, myAvatarIcon, handleIncomingMessage, broadcastEvent]);
 
-  // Periodic elapsed time & state broadcast while racing
+  // AI Bots simulation during race
+  useEffect(() => {
+    if (roomState !== 'racing' || !startTime) return;
+
+    const botInterval = setInterval(() => {
+      const now = Date.now();
+      const elapsedSec = (now - startTime) / 1000;
+
+      setPlayers(prev => {
+        let updated = false;
+        const next = { ...prev };
+
+        Object.values(next).forEach((p: any) => {
+          if (p.isBot && p.status === 'racing') {
+            updated = true;
+            const targetWpm = p.targetWpm || 55;
+            // Expected words = (targetWpm / 60) * elapsedSec
+            const totalWords = wordsRef.current.length || 30;
+            const wordsTyped = (targetWpm / 60) * elapsedSec;
+            const rawProgress = Math.min(100, Math.round((wordsTyped / totalWords) * 100));
+
+            const isDone = rawProgress >= 100;
+            next[p.id] = {
+              ...p,
+              progress: rawProgress,
+              wpm: targetWpm + Math.round((Math.random() - 0.5) * 4),
+              status: isDone ? 'finished' : 'racing',
+              finishTime: isDone ? (p.finishTime || now) : undefined
+            };
+          }
+        });
+
+        return updated ? next : prev;
+      });
+    }, 400);
+
+    return () => clearInterval(botInterval);
+  }, [roomState, startTime]);
+
   useEffect(() => {
     if (roomState !== 'racing' || !startTime) return;
 
@@ -372,7 +398,6 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
     return () => clearInterval(timer);
   }, [roomState, startTime]);
 
-  // Handle Room Creation
   const handleCreateRoom = () => {
     const code = Math.random().toString(36).substring(2, 8).toUpperCase();
     const randomText = PASSAGES[Math.floor(Math.random() * PASSAGES.length)];
@@ -384,23 +409,70 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
     setRoomCode(code);
   };
 
-  // Handle Room Joining
   const handleJoinRoom = () => {
     if (joinCodeInput.trim().length < 6) return;
     setRoomCode(joinCodeInput.trim().toUpperCase());
   };
 
-  // Synchronized Start Race Handler
+  const handleAddBots = () => {
+    const bots: PlayerState[] = [
+      {
+        id: `bot-titan-${Date.now()}`,
+        name: '🤖 Titan AI (65 WPM)',
+        wpm: 65,
+        accuracy: 99,
+        progress: 0,
+        correctChars: 0,
+        incorrectChars: 0,
+        status: 'waiting',
+        avatarIcon: '⚡',
+        isBot: true,
+        targetWpm: 65
+      },
+      {
+        id: `bot-velocity-${Date.now()}`,
+        name: '🤖 Velocity Racer (52 WPM)',
+        wpm: 52,
+        accuracy: 96,
+        progress: 0,
+        correctChars: 0,
+        incorrectChars: 0,
+        status: 'waiting',
+        avatarIcon: '🐆',
+        isBot: true,
+        targetWpm: 52
+      },
+      {
+        id: `bot-falcon-${Date.now()}`,
+        name: '🤖 Falcon AI (44 WPM)',
+        wpm: 44,
+        accuracy: 94,
+        progress: 0,
+        correctChars: 0,
+        incorrectChars: 0,
+        status: 'waiting',
+        avatarIcon: '🚀',
+        isBot: true,
+        targetWpm: 44
+      }
+    ];
+
+    setPlayers(prev => {
+      const copy = { ...prev };
+      bots.forEach(b => {
+        copy[b.id] = b;
+      });
+      return copy;
+    });
+  };
+
   const handleStartRace = () => {
     if (hostIdRef.current !== activeUser.id) return;
-
-    // Start 3.5 seconds in the future so all peers synchronize smoothly
     const targetStartAt = Date.now() + 3500;
     broadcastEvent('start_countdown', { targetStartAt });
     handleStartCountdownAt(targetStartAt);
   };
 
-  // Broadcast current player state
   const sendMyProgress = useCallback(
     (customProgress?: number, customWpm?: number, customStatus?: 'racing' | 'finished', finishTime?: number) => {
       const prog = customProgress !== undefined ? customProgress : myProgress;
@@ -420,13 +492,9 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
         avatarIcon: myAvatarIcon
       };
 
-      // Update local state immediately
       setPlayers(prev => ({ ...prev, [activeUser.id]: state }));
-
-      // Broadcast to other peers
       broadcastEvent('player_progress', { player: state });
 
-      // Track in presence
       if (channelRef.current) {
         channelRef.current.track(state);
       }
@@ -434,11 +502,9 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
     [activeUser.id, activeUser.name, myProgress, myWpm, myAccuracy, myAvatarIcon, broadcastEvent]
   );
 
-  // Keyboard Handlers - Exactly matching TypingArena
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (roomState !== 'racing') return;
 
-    // Audio feedback
     if (soundEnabled) {
       if (e.key === 'Backspace' || e.key.length === 1) {
         soundController.playKeyClick();
@@ -451,11 +517,8 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
 
     const currentTargetWord = (words[currentWordIndex] || '').trim();
 
-    // Backspace Handling
     if (e.key === 'Backspace') {
       totalKeystrokesRef.current += 1;
-
-      // If at start of word and can go back to previous word
       if (inputVal === '' && currentWordIndex > 0) {
         e.preventDefault();
         const prevIndex = currentWordIndex - 1;
@@ -468,7 +531,6 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
       return;
     }
 
-    // Space bar advances to next word
     if (e.key === ' ' || e.key === 'Enter') {
       e.preventDefault();
       if (!inputVal.trim() && inputVal !== '') {
@@ -478,7 +540,7 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
       totalKeystrokesRef.current += 1;
 
       if (inputVal === currentTargetWord) {
-        correctKeystrokesRef.current += currentTargetWord.length + 1; // +1 space
+        correctKeystrokesRef.current += currentTargetWord.length + 1;
       } else {
         incorrectKeystrokesRef.current += 1;
       }
@@ -486,12 +548,10 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
       const updatedWords = [...typedWords];
       updatedWords[currentWordIndex] = inputVal;
 
-      // Calculate progress based on words completed
       const nextWordIdx = currentWordIndex + 1;
       const progressPercent = Math.min(100, Math.round((nextWordIdx / words.length) * 100));
       setMyProgress(progressPercent);
 
-      // Check if race finished!
       if (nextWordIdx >= words.length) {
         setTypedWords(updatedWords);
         finishRace();
@@ -503,12 +563,10 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
       setCurrentWordIndex(nextWordIdx);
       setInputVal('');
 
-      // Send live progress broadcast
       sendMyProgress(progressPercent);
       return;
     }
 
-    // Printable Characters
     if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
       totalKeystrokesRef.current += 1;
       const charIndex = inputVal.length;
@@ -529,7 +587,6 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
     const val = e.target.value;
     setInputVal(val);
 
-    // Calculate current live WPM and Accuracy
     if (startTime) {
       const elapsedMinutes = Math.max(0.016, (Date.now() - startTime) / 60000);
       const computedWpm = Math.max(0, Math.round((correctKeystrokesRef.current / 5) / elapsedMinutes));
@@ -541,27 +598,22 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
     }
   };
 
-  // Finish Race Handler
   const finishRace = () => {
     setRoomState('finished');
     const finishTimestamp = Date.now();
     setEndTime(finishTimestamp);
 
-    // Calculate final metrics
     const elapsedMinutes = startTime ? Math.max(0.016, (finishTimestamp - startTime) / 60000) : 1;
     const finalWpm = Math.max(0, Math.round((correctKeystrokesRef.current / 5) / elapsedMinutes));
     setMyWpm(finalWpm);
     setMyProgress(100);
 
-    // Calculate place rank
     const existingFinishes = (Object.values(players) as PlayerState[]).filter(p => p.status === 'finished').length;
     const rank = existingFinishes + 1;
     setMyFinishRank(rank);
 
-    // Broadcast finished status
     sendMyProgress(100, finalWpm, 'finished', finishTimestamp);
 
-    // Confetti celebration!
     try {
       confetti({
         particleCount: 100,
@@ -571,7 +623,6 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
     } catch {}
   };
 
-  // Play Again Handler (Host restarts the room for all players)
   const handlePlayAgain = () => {
     if (hostIdRef.current !== activeUser.id) return;
 
@@ -582,7 +633,6 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
 
     broadcastEvent('reset_race', { raceText: randomText });
 
-    // Local reset
     setTypedWords(['']);
     setCurrentWordIndex(0);
     setInputVal('');
@@ -599,7 +649,6 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
     setRoomState('waiting');
   };
 
-  // Sorted players by progress or finish rank
   const sortedPlayers = useMemo(() => {
     const list = Object.values(players) as PlayerState[];
     return list.sort((a, b) => {
@@ -612,7 +661,6 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
     });
   }, [players]);
 
-  // Auto-scroll active word into view during race
   useEffect(() => {
     if (activeWordRef.current) {
       activeWordRef.current.scrollIntoView({
@@ -630,19 +678,19 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
         <div className="flex items-center gap-4">
           <button
             onClick={onExit}
-            className="p-2.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800 transition-colors shadow-md"
+            className="p-2.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800 transition-colors shadow-md cursor-pointer"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
             <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                Peer-to-Peer
+              <span className="px-2.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                Synchronized Arena
               </span>
-              <span className="text-xs font-mono text-slate-400">Zero-Latency Sync</span>
+              <span className="text-xs font-mono text-slate-400">Department of Technical Training</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black text-slate-100 flex items-center gap-2.5">
-              <Swords className="w-7 h-7 text-amber-400" />
+              <Swords className="w-7 h-7 text-emerald-400" />
               Multiplayer Typing Arena
             </h1>
           </div>
@@ -650,19 +698,19 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Create Room Card */}
-          <div className="bg-slate-900 border border-slate-800 hover:border-amber-500/40 rounded-3xl p-7 space-y-6 flex flex-col items-center justify-between text-center transition-all shadow-xl shadow-amber-950/10">
-            <div className="w-16 h-16 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-lg shadow-amber-500/10">
+          <div className="bg-slate-900 border border-slate-800 hover:border-emerald-500/40 rounded-3xl p-7 space-y-6 flex flex-col items-center justify-between text-center transition-all shadow-xl shadow-emerald-950/10">
+            <div className="w-16 h-16 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-lg shadow-emerald-500/10">
               <Zap className="w-8 h-8" />
             </div>
             <div className="space-y-2">
               <h2 className="text-xl font-black text-slate-100">Create Private Race</h2>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Generate an instant room code. Share it with friends or classmates to race head-to-head on the same text.
+                Generate an instant room code. Invite peers or add instant AI bot racers to compete in real-time.
               </p>
             </div>
             <button
               onClick={handleCreateRoom}
-              className="w-full py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-sm transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2"
+              className="w-full py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer"
             >
               <Zap className="w-4 h-4 fill-current" />
               <span>Create New Room</span>
@@ -670,8 +718,8 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
           </div>
 
           {/* Join Room Card */}
-          <div className="bg-slate-900 border border-slate-800 hover:border-cyan-500/40 rounded-3xl p-7 space-y-6 flex flex-col items-center justify-between text-center transition-all shadow-xl shadow-cyan-950/10">
-            <div className="w-16 h-16 rounded-2xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-lg shadow-cyan-500/10">
+          <div className="bg-slate-900 border border-slate-800 hover:border-emerald-500/40 rounded-3xl p-7 space-y-6 flex flex-col items-center justify-between text-center transition-all shadow-xl shadow-emerald-950/10">
+            <div className="w-16 h-16 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-lg shadow-emerald-500/10">
               <Users className="w-8 h-8" />
             </div>
             <div className="w-full space-y-3">
@@ -682,13 +730,13 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
                 value={joinCodeInput}
                 onChange={e => setJoinCodeInput(e.target.value.toUpperCase())}
                 maxLength={6}
-                className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3 text-center text-xl text-cyan-300 font-mono font-black tracking-widest focus:outline-none focus:border-cyan-500 transition-colors uppercase placeholder:text-slate-700"
+                className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3 text-center text-xl text-emerald-300 font-mono font-black tracking-widest focus:outline-none focus:border-emerald-500 transition-colors uppercase placeholder:text-slate-700"
               />
             </div>
             <button
               disabled={joinCodeInput.trim().length < 6}
               onClick={handleJoinRoom}
-              className="w-full py-3.5 rounded-2xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-40 disabled:hover:bg-cyan-500 text-slate-950 font-black text-sm transition-all shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2"
+              className="w-full py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 disabled:hover:bg-emerald-500 text-slate-950 font-black text-sm transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer"
             >
               <Swords className="w-4 h-4" />
               <span>Enter Race Room</span>
@@ -707,23 +755,23 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
         <div className="flex items-center gap-4">
           <button
             onClick={onExit}
-            className="p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700 transition-colors shadow-sm"
+            className="p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700 transition-colors shadow-sm cursor-pointer"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl sm:text-2xl font-black text-slate-100 flex items-center gap-2">
-                <Swords className="w-6 h-6 text-amber-400" />
+                <Swords className="w-6 h-6 text-emerald-400" />
                 Multiplayer Arena
               </h1>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                 LIVE
               </span>
             </div>
             <div className="flex items-center gap-2 mt-1">
               <span className="text-xs text-slate-400 font-mono">Room Code:</span>
-              <span className="px-2.5 py-0.5 rounded-lg bg-slate-950 text-amber-300 border border-amber-500/30 font-mono font-black tracking-widest text-sm select-all">
+              <span className="px-2.5 py-0.5 rounded-lg bg-slate-950 text-emerald-300 border border-emerald-500/30 font-mono font-black tracking-widest text-sm select-all">
                 {roomCode}
               </span>
               <span className="text-[11px] text-slate-500 hidden sm:inline">• Share this code with peers</span>
@@ -732,31 +780,43 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
         </div>
 
         {/* Room Action Control */}
-        <div>
+        <div className="flex items-center gap-2.5">
           {roomState === 'waiting' && hostId === activeUser.id && (
-            <button
-              onClick={handleStartRace}
-              className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-sm transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2"
-            >
-              <Zap className="w-4 h-4 fill-current" />
-              <span>Start Race For Everyone</span>
-            </button>
+            <>
+              <button
+                onClick={handleAddBots}
+                className="px-4 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+              >
+                <Bot className="w-4 h-4 text-emerald-400" />
+                <span>+ Add AI Racers</span>
+              </button>
+
+              <button
+                onClick={handleStartRace}
+                className="px-6 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Zap className="w-4 h-4 fill-current" />
+                <span>Start Race For Everyone</span>
+              </button>
+            </>
           )}
+
           {roomState === 'waiting' && hostId !== activeUser.id && (
             <div className="px-5 py-3 rounded-2xl bg-slate-800 border border-slate-700 text-slate-300 font-mono text-xs font-semibold flex items-center justify-center gap-2.5">
-              <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+              <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
               <span>Waiting for room host to start...</span>
             </div>
           )}
+
           {(roomState === 'racing' || roomState === 'countdown') && (
             <div className="flex items-center gap-3 font-mono text-xs text-slate-400">
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800">
-                <Gauge className="w-4 h-4 text-cyan-400" />
-                <span className="font-bold text-cyan-300">{myWpm} WPM</span>
+                <Gauge className="w-4 h-4 text-emerald-400" />
+                <span className="font-bold text-emerald-300">{myWpm} WPM</span>
               </div>
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800">
-                <Target className="w-4 h-4 text-emerald-400" />
-                <span className="font-bold text-emerald-300">{myAccuracy}%</span>
+                <Target className="w-4 h-4 text-amber-400" />
+                <span className="font-bold text-amber-300">{myAccuracy}%</span>
               </div>
             </div>
           )}
@@ -767,7 +827,7 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <div className="flex items-center gap-2">
-            <Flag className="w-4 h-4 text-amber-400" />
+            <Flag className="w-4 h-4 text-emerald-400" />
             <h2 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-300">
               Live Synchronized Race Track
             </h2>
@@ -788,7 +848,7 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
                 key={p.id}
                 className={`relative h-16 rounded-2xl overflow-hidden border transition-all ${
                   isMe
-                    ? 'bg-slate-950/80 border-amber-500/40 shadow-md shadow-amber-950/20'
+                    ? 'bg-slate-950/80 border-emerald-500/40 shadow-md shadow-emerald-950/20'
                     : 'bg-slate-950/40 border-slate-800'
                 }`}
               >
@@ -805,12 +865,11 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
                 <div
                   className={`absolute top-0 left-0 bottom-0 transition-all duration-300 ease-out flex items-center justify-end pr-2 ${
                     isMe
-                      ? 'bg-gradient-to-r from-amber-500/10 via-amber-500/20 to-amber-500/30 border-r-2 border-amber-400'
-                      : 'bg-gradient-to-r from-cyan-500/10 via-cyan-500/20 to-cyan-500/30 border-r-2 border-cyan-400'
+                      ? 'bg-gradient-to-r from-emerald-500/10 via-emerald-500/20 to-emerald-500/30 border-r-2 border-emerald-400'
+                      : 'bg-gradient-to-r from-slate-700/20 via-slate-600/30 to-slate-500/40 border-r-2 border-slate-400'
                   }`}
                   style={{ width: `${Math.max(8, p.progress)}%` }}
                 >
-                  {/* Moving Racer Avatar */}
                   <span className="text-2xl transform transition-transform filter drop-shadow-md select-none mr-1">
                     {p.avatarIcon || '🏎️'}
                   </span>
@@ -820,20 +879,20 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
                 <div className="absolute inset-0 px-4 flex items-center justify-between pointer-events-none z-10">
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-sm text-slate-100 flex items-center gap-1.5 drop-shadow">
-                      {p.name} {isMe && <span className="text-amber-400 font-mono text-xs">(You)</span>}
+                      {p.name} {isMe && <span className="text-emerald-400 font-mono text-xs">(You)</span>}
                       {p.id === hostId && <Crown className="w-3.5 h-3.5 text-amber-400 inline" />}
                     </span>
                   </div>
 
                   <div className="flex items-center gap-3 font-mono text-xs">
-                    <span className="font-bold text-cyan-300 drop-shadow">
+                    <span className="font-bold text-emerald-300 drop-shadow">
                       {p.wpm} <span className="text-[10px] text-slate-400">WPM</span>
                     </span>
-                    <span className="font-bold text-emerald-400 drop-shadow">
+                    <span className="font-bold text-amber-400 drop-shadow">
                       {p.progress}%
                     </span>
                     {p.status === 'finished' && (
-                      <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30 text-[11px]">
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30 text-[11px]">
                         {rankEmoji} Finished
                       </span>
                     )}
@@ -845,17 +904,17 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
         </div>
       </div>
 
-      {/* Synchronous Countdown Overlay or Interactive Typing Box */}
+      {/* Interactive Typing Box */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl space-y-6">
         {roomState === 'waiting' && (
           <div className="py-12 text-center space-y-3">
-            <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mx-auto animate-pulse">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mx-auto animate-pulse">
               <Clock className="w-7 h-7" />
             </div>
             <h3 className="text-lg font-bold text-slate-200">Waiting in Staging Lobby</h3>
             <p className="text-xs text-slate-400 max-w-md mx-auto">
               {hostId === activeUser.id
-                ? 'When all participants are visible in the race track, click "Start Race For Everyone" above to launch the synchronized countdown.'
+                ? 'When ready, click "Start Race For Everyone" (or "+ Add AI Racers") to launch the countdown!'
                 : 'The room host will start the race. Get your fingers ready on the keyboard!'}
             </p>
           </div>
@@ -863,7 +922,7 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
 
         {roomState === 'countdown' && (
           <div className="py-12 text-center space-y-3 animate-in zoom-in duration-300">
-            <div className="text-7xl font-black text-amber-400 font-mono tracking-tight animate-bounce">
+            <div className="text-7xl font-black text-emerald-400 font-mono tracking-tight animate-bounce">
               {countdown > 0 ? countdown : 'GO!'}
             </div>
             <p className="text-sm font-mono text-slate-300 font-bold uppercase tracking-wider">
@@ -876,7 +935,7 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
           <>
             {roomState === 'finished' ? (
               <div className="py-8 text-center space-y-6 animate-in fade-in zoom-in duration-500">
-                <div className="w-20 h-20 rounded-3xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 mx-auto shadow-xl shadow-amber-500/20">
+                <div className="w-20 h-20 rounded-3xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 mx-auto shadow-xl shadow-emerald-500/20">
                   <Trophy className="w-10 h-10" />
                 </div>
                 <div className="space-y-1">
@@ -891,99 +950,84 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-xl mx-auto font-mono">
                   <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl">
                     <span className="text-[10px] text-slate-500 uppercase block">Speed</span>
-                    <span className="text-2xl font-bold text-cyan-400">{myWpm} <span className="text-xs text-slate-500">WPM</span></span>
+                    <span className="text-2xl font-bold text-emerald-400">{myWpm} <span className="text-xs text-slate-500">WPM</span></span>
                   </div>
                   <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl">
                     <span className="text-[10px] text-slate-500 uppercase block">Accuracy</span>
-                    <span className="text-2xl font-bold text-emerald-400">{myAccuracy}%</span>
+                    <span className="text-2xl font-bold text-amber-400">{myAccuracy}%</span>
                   </div>
                   <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl">
-                    <span className="text-[10px] text-slate-500 uppercase block">Duration</span>
-                    <span className="text-2xl font-bold text-slate-200">
-                      {startTime && endTime ? Math.floor((endTime - startTime) / 1000) : elapsedTime}s
-                    </span>
+                    <span className="text-[10px] text-slate-500 uppercase block">Time</span>
+                    <span className="text-2xl font-bold text-slate-200">{elapsedTime}s</span>
                   </div>
                   <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl">
-                    <span className="text-[10px] text-slate-500 uppercase block">Errors</span>
-                    <span className="text-2xl font-bold text-rose-400">{incorrectKeystrokesRef.current}</span>
+                    <span className="text-[10px] text-slate-500 uppercase block">Position</span>
+                    <span className="text-2xl font-bold text-emerald-400">#{myFinishRank || 1}</span>
                   </div>
                 </div>
 
-                <div className="pt-4 flex items-center justify-center gap-3">
-                  {hostId === activeUser.id ? (
-                    <button
-                      onClick={handlePlayAgain}
-                      className="px-6 py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-amber-500/20 flex items-center gap-2"
-                    >
-                      <RotateCcw className="w-4 h-4" />
-                      <span>Rematch (Restart Race Lobby)</span>
-                    </button>
-                  ) : (
-                    <div className="text-xs font-mono text-slate-400 flex items-center gap-2">
-                      <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
-                      <span>Waiting for room host to initiate rematch...</span>
-                    </div>
-                  )}
-                </div>
+                {hostId === activeUser.id && (
+                  <button
+                    onClick={handlePlayAgain}
+                    className="px-8 py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm transition-all shadow-lg shadow-emerald-500/20 inline-flex items-center gap-2 cursor-pointer"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    <span>Rematch / Play Again</span>
+                  </button>
+                )}
               </div>
             ) : (
-              <div
-                onClick={() => inputRef.current?.focus()}
-                className="relative bg-slate-950 border border-slate-800 rounded-2xl p-6 sm:p-8 cursor-text select-none shadow-inner min-h-[200px] flex flex-col justify-center"
-              >
-                {/* Hidden input field for smooth native typing */}
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={inputVal}
-                  onChange={handleInputChange}
-                  onKeyDown={handleKeyDown}
-                  autoFocus
-                  className="absolute inset-0 opacity-0 cursor-default"
-                  aria-label="Multiplayer race input"
-                />
-
-                {/* Words Container with Character-by-Character Styling */}
+              <div className="space-y-6">
+                {/* Passage Container */}
                 <div
-                  className="font-mono text-lg sm:text-2xl leading-relaxed tracking-wide text-left relative transition-all"
-                  style={{ fontFamily: "'Fira Code', monospace" }}
+                  onClick={() => inputRef.current?.focus()}
+                  className="bg-slate-950/80 border border-slate-800 rounded-2xl p-6 sm:p-8 font-mono text-base sm:text-lg leading-relaxed max-h-56 overflow-y-auto cursor-text select-none shadow-inner"
                 >
-                  {words.map((rawWord, wIdx) => {
-                    const isActive = wIdx === currentWordIndex;
-                    const currentInput = isActive ? inputVal : typedWords[wIdx] || '';
-                    const typedWord = wIdx < currentWordIndex ? typedWords[wIdx] : undefined;
-
-                    return (
-                      <MultiplayerWordRenderer
-                        key={wIdx}
-                        rawWord={rawWord}
-                        wIdx={wIdx}
-                        isActive={isActive}
-                        currentInput={currentInput}
-                        typedWord={typedWord}
-                        activeWordRef={isActive ? activeWordRef : null}
-                      />
-                    );
-                  })}
+                  {words.map((w, idx) => (
+                    <MultiplayerWordRenderer
+                      key={idx}
+                      rawWord={w}
+                      wIdx={idx}
+                      isActive={idx === currentWordIndex}
+                      currentInput={inputVal}
+                      typedWord={typedWords[idx]}
+                      activeWordRef={idx === currentWordIndex ? activeWordRef : null}
+                    />
+                  ))}
                 </div>
 
-                <div className="mt-6 flex items-center justify-between text-xs text-slate-500 font-mono pt-4 border-t border-slate-800/80">
-                  <span>Space to advance word • Backspace to correct letters</span>
-                  <span className="text-amber-400/90 font-bold">Word {currentWordIndex + 1} of {words.length}</span>
+                {/* Input Field */}
+                <div className="relative">
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={inputVal}
+                    onChange={handleInputChange}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Type the passage above at maximum velocity..."
+                    autoFocus
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck="false"
+                    className="w-full bg-slate-950 border-2 border-slate-800 focus:border-emerald-500 rounded-2xl px-5 py-4 text-slate-100 font-mono text-lg placeholder:text-slate-600 focus:outline-none transition-colors shadow-lg"
+                  />
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-none">
+                    <span className="text-xs font-mono text-slate-500">
+                      Word {currentWordIndex + 1} / {words.length}
+                    </span>
+                  </div>
                 </div>
+
+                {/* Live Keyboard */}
+                <MechanicalKeyboard
+                  activeKey={words[currentWordIndex]?.[inputVal.length] || null}
+                  soundEnabled={soundEnabled}
+                />
               </div>
             )}
           </>
         )}
-      </div>
-
-      {/* Mechanical Keyboard Section (Always visible beneath race arena) */}
-      <div className="space-y-2">
-        <MechanicalKeyboard
-          interactive={true}
-          compact={false}
-          className="shadow-2xl"
-        />
       </div>
     </div>
   );

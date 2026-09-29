@@ -9,13 +9,15 @@ import { StudentPortal } from './components/StudentPortal';
 import { AdminPortal } from './components/AdminPortal';
 import { MultiplayerArena } from './components/MultiplayerArena';
 import { AcademyDashboard } from './components/academy/AcademyDashboard';
+import { DeveloperFooter } from './components/DeveloperFooter';
 import { TypingTest } from './types';
 
 const MainLayout: React.FC = () => {
   const { currentUser } = useApp();
   const [currentView, setCurrentView] = useState<'arena' | 'trainer' | 'student' | 'admin' | 'login' | 'multiplayer' | 'academy'>(() => {
-    // If user is already authenticated in session, route to their role dashboard
-    const raw = localStorage.getItem('testtype_user_v2');
+    // Only auto-restore if remember preference was explicitly enabled
+    const rememberPref = localStorage.getItem('testtype_remember_preference');
+    const raw = sessionStorage.getItem('testtype_session_user') || (rememberPref === 'true' ? localStorage.getItem('testtype_session_user') : null);
     if (raw) {
       try {
         const u = JSON.parse(raw);
@@ -43,7 +45,7 @@ const MainLayout: React.FC = () => {
       return;
     }
 
-    // Role-based authorization: Allow shared views 'arena', 'multiplayer', 'academy'
+    // Shared views: 'arena', 'multiplayer', 'academy'
     if (currentView === 'arena' || currentView === 'multiplayer' || currentView === 'academy') {
       return;
     }
@@ -86,7 +88,7 @@ const MainLayout: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-cyan-500/30 selection:text-cyan-200">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-emerald-500/30 selection:text-emerald-200">
       {/* Main Navbar */}
       <Navbar
         currentView={currentView}
@@ -95,7 +97,7 @@ const MainLayout: React.FC = () => {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 pb-16">
+      <main className="flex-1 pb-12">
         {currentView === 'login' && !currentUser && (
           <LoginPage
             onSuccess={handleLoginSuccess}
@@ -164,12 +166,8 @@ const MainLayout: React.FC = () => {
         )}
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-slate-900 bg-slate-950/90 py-6 px-4 text-center text-xs text-slate-500 font-mono">
-        <div className="max-w-7xl mx-auto flex items-center justify-center">
-          <p>© 2026 Pranav Vedula|Dept. of CSE. All rights reserved.</p>
-        </div>
-      </footer>
+      {/* Official Developer Attribution Footer */}
+      <DeveloperFooter />
 
       {/* Login Modal for quick authentication */}
       <LoginModal

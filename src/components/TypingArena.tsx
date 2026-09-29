@@ -6,6 +6,7 @@ import { soundController } from '../utils/audio';
 import confetti from 'canvas-confetti';
 import { D3SessionChart } from './D3SessionChart';
 import { MechanicalKeyboard } from './MechanicalKeyboard';
+import { formatISTDateTime } from '../utils/dateUtils';
 import {
   RotateCcw,
   Clock,
@@ -29,7 +30,6 @@ interface TypingArenaProps {
   onExitProctored?: () => void;
 }
 
-
 const WordRenderer = React.memo(({ rawWord, wIdx, isActive, currentInput, activeWordRef }: any) => {
   const word = rawWord.trim();
   const prefix = rawWord.substring(0, rawWord.length - word.length);
@@ -48,19 +48,19 @@ const WordRenderer = React.memo(({ rawWord, wIdx, isActive, currentInput, active
       <span
         ref={isActive ? activeWordRef : null}
         className={`inline-block py-1 rounded transition-colors ${
-          isActive ? 'bg-slate-800/40 px-1' : ''
+          isActive ? 'bg-slate-800/60 px-1 ring-1 ring-emerald-400/30' : ''
         }`}
       >
         {word.split('').map((char: string, cIdx: number) => {
-          let charColor = 'text-slate-600'; // untyped
+          let charColor = 'text-slate-600';
           let bg = '';
 
           if (cIdx < currentInput.length) {
             if (currentInput[cIdx] === char) {
-              charColor = 'text-slate-100 font-medium'; // correct
+              charColor = 'text-emerald-400 font-medium';
             } else {
               charColor = 'text-rose-400';
-              bg = 'bg-rose-500/20'; // incorrect
+              bg = 'bg-rose-500/20';
             }
           }
 
@@ -69,26 +69,24 @@ const WordRenderer = React.memo(({ rawWord, wIdx, isActive, currentInput, active
           return (
             <span key={cIdx} className="relative inline-block">
               {isCaretHere && (
-                <span className="absolute left-0 top-0.5 bottom-0.5 w-[2px] bg-indigo-400 animate-pulse rounded-full" />
+                <span className="absolute left-0 top-0.5 bottom-0.5 w-[2px] bg-emerald-400 animate-pulse rounded-full shadow-[0_0_8px_#10b981]" />
               )}
               <span className={`${charColor} ${bg} rounded-sm`}>{char}</span>
             </span>
           );
         })}
-        {/* Extra characters typed beyond word length */}
         {currentInput.length > word.length &&
           currentInput.substring(word.length).split('').map((char: string, idx: number) => (
             <span key={`extra-${idx}`} className="relative inline-block">
               {isActive && idx === currentInput.length - word.length - 1 && (
-                <span className="absolute left-0 top-0.5 bottom-0.5 w-[2px] bg-indigo-400 animate-pulse rounded-full" />
+                <span className="absolute left-0 top-0.5 bottom-0.5 w-[2px] bg-emerald-400 animate-pulse rounded-full" />
               )}
               <span className="text-rose-400 bg-rose-500/20 opacity-80 rounded-sm">{char}</span>
             </span>
           ))}
-        {/* Caret at the very end if we typed exactly the word length or more */}
         {isActive && currentInput.length >= word.length && (
           <span className="relative inline-block">
-            <span className="absolute left-0 top-0.5 bottom-0.5 h-full w-[2px] bg-indigo-400 animate-pulse rounded-full" />
+            <span className="absolute left-0 top-0.5 bottom-0.5 h-full w-[2px] bg-emerald-400 animate-pulse rounded-full" />
           </span>
         )}
       </span>
@@ -108,7 +106,6 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
     submitAttempt
   } = useApp();
 
-  // Mode selection (if not an active proctored assessment)
   const isAssessment = Boolean(initialTest);
   const [activeMode, setActiveMode] = useState<TypingMode>(
     initialTest?.category === 'code' ? 'code' : initialTest?.category === 'story' ? 'story' : 'time'
@@ -116,26 +113,21 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
   const [timeOption, setTimeOption] = useState<number>(initialTest?.timeLimit || 30);
   const [wordOption, setWordOption] = useState<number>(25);
 
-  // Attempt authorization & status
   const [attemptBlockedError, setAttemptBlockedError] = useState<string | null>(null);
   const attemptIdRef = useRef<string | null>(null);
 
-  // Target text generation
   const [targetText, setTargetText] = useState<string>('');
   const [words, setWords] = useState<string[]>([]);
 
-  // User input states
   const [typedWords, setTypedWords] = useState<string[]>(['']);
   const [currentWordIndex, setCurrentWordIndex] = useState<number>(0);
   const [inputVal, setInputVal] = useState<string>('');
 
-  // Engine timing and stats
   const [testStarted, setTestStarted] = useState<boolean>(false);
   const [testFinished, setTestFinished] = useState<boolean>(false);
   const [timeLeft, setTimeLeft] = useState<number>(timeOption);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
 
-  // Initialize atomic attempt in Supabase if proctored assessment
   useEffect(() => {
     if (initialTest && currentUser) {
       startAttempt(initialTest.id, currentUser.id).then(res => {
@@ -148,7 +140,6 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
     }
   }, [initialTest, currentUser, startAttempt]);
 
-  // Keystrokes Tracking (Typing.com / Monkeytype accuracy calculation)
   const totalKeystrokesRef = useRef<number>(0);
   const correctKeystrokesRef = useRef<number>(0);
   const incorrectKeystrokesRef = useRef<number>(0);
@@ -160,14 +151,10 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
     backspaces: 0
   });
 
-  // Anti-cheat proctoring
   const [proctorBlurFlags, setProctorBlurFlags] = useState<number>(0);
   const [showBlurWarning, setShowBlurWarning] = useState<boolean>(false);
-
-  // History tracking for WPM chart
   const [speedHistory, setSpeedHistory] = useState<SubmissionHistoryPoint[]>([]);
 
-  // DOM & Timing references
   const inputRef = useRef<HTMLInputElement>(null);
   const textContainerRef = useRef<HTMLDivElement>(null);
   const activeWordRef = useRef<HTMLSpanElement>(null);
@@ -193,325 +180,203 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
     errors: 0
   });
 
-  // Initialize or Reset the test text
   const generateNewTestText = useCallback(() => {
     if (initialTest) {
       setTargetText(initialTest.content.trim());
       setWords(initialTest.content.match(/\s*\S+/g) || []);
-      setTimeLeft(initialTest.timeLimit);
       return;
     }
 
-    if (activeMode === 'time') {
-      const shuffled = [...MONKEYTYPE_WORDS].sort(() => 0.5 - Math.random());
-      const selected = Array.from({ length: 140 }, (_, i) => shuffled[i % shuffled.length]);
-      const text = selected.join(' ');
-      setTargetText(text);
-      setWords(selected);
-      setTimeLeft(timeOption);
-    } else if (activeMode === 'words') {
-      const shuffled = [...MONKEYTYPE_WORDS].sort(() => 0.5 - Math.random());
-      const selected = shuffled.slice(0, wordOption);
-      const text = selected.join(' ');
-      setTargetText(text);
-      setWords(selected);
-      setTimeLeft(999);
-    } else if (activeMode === 'story') {
-      const storyText =
-        'The morning sun pierced the dense silver mist, illuminating the moss-covered granite pathway leading toward the high observatory. Every step echoed against the quiet mountain gorge, accompanied only by the distant whispers of alpine pines bending before the cool northern wind.';
-      setTargetText(storyText);
-      setWords(storyText.split(/\s+/));
-      setTimeLeft(60);
-    } else if (activeMode === 'code') {
-      const codeText = `function calculateMetrics(records) {\n  return records.reduce((acc, curr) => {\n    acc.totalScore += curr.score;\n    acc.count += 1;\n    return acc;\n  }, { totalScore: 0, count: 0 });\n}`;
-      setTargetText(codeText);
-      setWords(codeText.match(/\s*\S+/g) || []);
-      setTimeLeft(90);
+    if (activeMode === 'code') {
+      const snippets = [
+        `def quick_sort(arr):\n    if len(arr) <= 1:\n        return arr\n    pivot = arr[len(arr) // 2]\n    left = [x for x in arr if x < pivot]\n    middle = [x for x in arr if x == pivot]\n    right = [x for x in arr if x > pivot]\n    return quick_sort(left) + middle + quick_sort(right)`,
+        `function binarySearch(arr, target) {\n  let low = 0, high = arr.length - 1;\n  while (low <= high) {\n    let mid = Math.floor((low + high) / 2);\n    if (arr[mid] === target) return mid;\n    if (arr[mid] < target) low = mid + 1;\n    else high = mid - 1;\n  }\n  return -1;\n}`,
+        `#include <iostream>\n#include <vector>\nusing namespace std;\n\nint main() {\n    vector<int> numbers = {10, 20, 30, 40};\n    for (int n : numbers) {\n        cout << n << " ";\n    }\n    return 0;\n}`
+      ];
+      const selected = snippets[Math.floor(Math.random() * snippets.length)];
+      setTargetText(selected);
+      setWords(selected.match(/\s*\S+/g) || []);
+      return;
     }
-  }, [activeMode, initialTest, timeOption, wordOption]);
+
+    if (activeMode === 'story') {
+      const stories = [
+        "In the quiet laboratory, researchers watched as crystalline neural processors calculated quantum simulations with effortless precision. Every keystroke echoed across the silent floor, tracing pathways of computational elegance that bridged theoretical mathematics with real-world architecture.",
+        "The ancient lighthouse keeper ascended the spiral granite staircase at twilight. Outside, violent ocean breakers crashed against basalt reefs, but within the lantern vault, the polished brass gears turned in perfect mechanical harmony, casting golden beacons into the dark horizon."
+      ];
+      const selected = stories[Math.floor(Math.random() * stories.length)];
+      setTargetText(selected);
+      setWords(selected.match(/\s*\S+/g) || []);
+      return;
+    }
+
+    const count = activeMode === 'words' ? wordOption : 100;
+    const shuffled: string[] = [];
+    for (let i = 0; i < count; i++) {
+      shuffled.push(MONKEYTYPE_WORDS[Math.floor(Math.random() * MONKEYTYPE_WORDS.length)]);
+    }
+    const txt = shuffled.join(' ');
+    setTargetText(txt);
+    setWords(txt.match(/\s*\S+/g) || []);
+  }, [initialTest, activeMode, wordOption]);
 
   const resetTest = useCallback(() => {
-    startTimeRef.current = null;
-    lastRecordedSecondRef.current = 0;
+    setTestStarted(false);
+    setTestFinished(false);
+    setTimeLeft(timeOption);
+    setElapsedSeconds(0);
+    setInputVal('');
+    setTypedWords(['']);
+    setCurrentWordIndex(0);
     totalKeystrokesRef.current = 0;
     correctKeystrokesRef.current = 0;
     incorrectKeystrokesRef.current = 0;
     backspacesRef.current = 0;
     setKeystrokes({ total: 0, correct: 0, incorrect: 0, backspaces: 0 });
-
-    setTestStarted(false);
-    setTestFinished(false);
-    setTypedWords(['']);
-    setCurrentWordIndex(0);
-    setInputVal('');
-    setElapsedSeconds(0);
     setSpeedHistory([]);
-    setProctorBlurFlags(0);
-    setShowBlurWarning(false);
+    startTimeRef.current = null;
+    lastRecordedSecondRef.current = 0;
+    statsRef.current = {
+      correctChars: 0,
+      incorrectChars: 0,
+      extraChars: 0,
+      totalTypedChars: 0,
+      rawWpm: 0,
+      netWpm: 0,
+      accuracy: 100,
+      errors: 0
+    };
     generateNewTestText();
-
-    setTimeout(() => {
-      inputRef.current?.focus();
-    }, 50);
-  }, [generateNewTestText]);
+    setTimeout(() => inputRef.current?.focus(), 50);
+  }, [timeOption, generateNewTestText]);
 
   useEffect(() => {
     resetTest();
   }, [resetTest]);
 
-  // Tab + Enter Test Restart Tracker (for Practice Arena)
-  const tabPressedRef = useRef<boolean>(false);
-  const tabDownRef = useRef<boolean>(false);
-  const tabTimerRef = useRef<any>(null);
+  const computeCurrentStats = useCallback(() => {
+    let correct = 0;
+    let incorrect = 0;
+    let extra = 0;
+    let totalChars = 0;
 
-  useEffect(() => {
-    // Only enabled for practice arena, not proctored single-attempt assessments
-    if (isAssessment) return;
+    typedWords.forEach((typed, idx) => {
+      const rawTarget = words[idx] || '';
+      const target = rawTarget.trim();
+      const current = idx === currentWordIndex ? inputVal : typed;
 
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Tab') {
-        tabDownRef.current = true;
-        tabPressedRef.current = true;
-        clearTimeout(tabTimerRef.current);
-        tabTimerRef.current = setTimeout(() => {
-          tabPressedRef.current = false;
-        }, 1500);
-      } else if (e.key === 'Enter') {
-        if (tabDownRef.current || tabPressedRef.current) {
-          e.preventDefault();
-          tabDownRef.current = false;
-          tabPressedRef.current = false;
-          clearTimeout(tabTimerRef.current);
-          resetTest();
-        }
-      }
-    };
-
-    const handleGlobalKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Tab') {
-        tabDownRef.current = false;
-      }
-    };
-
-    window.addEventListener('keydown', handleGlobalKeyDown);
-    window.addEventListener('keyup', handleGlobalKeyUp);
-    return () => {
-      window.removeEventListener('keydown', handleGlobalKeyDown);
-      window.removeEventListener('keyup', handleGlobalKeyUp);
-      clearTimeout(tabTimerRef.current);
-    };
-  }, [isAssessment, resetTest]);
-
-  // Anti-Cheat Window Blur Tracker & Visibility Change
-  useEffect(() => {
-    const handleBlur = () => {
-      if (testStarted && !testFinished) {
-        setProctorBlurFlags(prev => prev + 1);
-        setShowBlurWarning(true);
-        setTimeout(() => setShowBlurWarning(false), 4000);
-        if (attemptIdRef.current && currentUser) {
-          logViolation(attemptIdRef.current, currentUser.id, 'window_blur', { elapsedSeconds });
-        }
-      }
-    };
-
-    const handleVisibility = () => {
-      if (document.visibilityState === 'hidden' && testStarted && !testFinished) {
-        setProctorBlurFlags(prev => prev + 1);
-        setShowBlurWarning(true);
-        setTimeout(() => setShowBlurWarning(false), 4000);
-        if (attemptIdRef.current && currentUser) {
-          logViolation(attemptIdRef.current, currentUser.id, 'visibility_change', { elapsedSeconds });
-        }
-      }
-    };
-
-    window.addEventListener('blur', handleBlur);
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => {
-      window.removeEventListener('blur', handleBlur);
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
-  }, [testStarted, testFinished, logViolation, currentUser, elapsedSeconds]);
-
-  // Periodic Checkpoint: saves progress every 15 seconds to PostgreSQL without blocking typing flow
-  useEffect(() => {
-    if (!testStarted || testFinished || !attemptIdRef.current) return;
-    const checkpointTimer = setInterval(() => {
-      const curr = statsRef.current;
-      checkpoint(attemptIdRef.current!, {
-        netWpm: curr.netWpm,
-        rawWpm: curr.rawWpm,
-        accuracy: curr.accuracy,
-        correctChars: curr.correctChars,
-        totalChars: curr.totalTypedChars,
-        errors: curr.errors,
-        violationCount: proctorBlurFlags
-      });
-    }, 15000);
-    return () => clearInterval(checkpointTimer);
-  }, [testStarted, testFinished, checkpoint, proctorBlurFlags]);
-
-  // Auto-scroll the word container to keep active word visible
-  useEffect(() => {
-    if (activeWordRef.current && textContainerRef.current) {
-      const container = textContainerRef.current;
-      const word = activeWordRef.current;
-      const wordTop = word.offsetTop;
-      const containerHeight = container.clientHeight;
-
-      if (wordTop > containerHeight / 2) {
-        container.scrollTop = wordTop - containerHeight / 3;
-      }
-    }
-  }, [currentWordIndex]);
-
-  // Real-time statistics calculation based on standard Typing.com & Monkeytype formulas:
-  // WPM = (correct characters ÷ 5) ÷ elapsed minutes
-  // Accuracy = correct keystrokes ÷ total keystrokes × 100
-  const stats = useMemo(() => {
-    let correctChars = 0;
-    let incorrectChars = 0;
-    let extraChars = 0;
-
-    words.forEach((targetWord, idx) => {
-      const typed = idx === currentWordIndex ? inputVal : typedWords[idx] || '';
-      if (!typed && idx > currentWordIndex) return;
-
-      const minLen = Math.min(targetWord.length, typed.length);
-      for (let i = 0; i < minLen; i++) {
-        if (typed[i] === targetWord[i]) {
-          correctChars++;
+      for (let i = 0; i < current.length; i++) {
+        totalChars++;
+        if (i < target.length) {
+          if (current[i] === target[i]) {
+            correct++;
+          } else {
+            incorrect++;
+          }
         } else {
-          incorrectChars++;
+          extra++;
         }
       }
 
-      if (typed.length > targetWord.length) {
-        extraChars += typed.length - targetWord.length;
-      } else if (idx < currentWordIndex && typed.length < targetWord.length) {
-        incorrectChars += targetWord.length - typed.length;
-      }
-
-      // Space character added for finished words
-      if (idx < currentWordIndex) {
-        correctChars++; // space key counts as 1 correct character
+      if (idx < currentWordIndex && current.length < target.length) {
+        incorrect += target.length - current.length;
       }
     });
 
-    const totalTypedChars = correctChars + incorrectChars + extraChars;
-    // Elapsed time in minutes (minimum floor of 0.5s to avoid division by zero on start)
-    const timeInMinutes = Math.max(elapsedSeconds, 0.5) / 60;
+    const elapsedMin = startTimeRef.current
+      ? Math.max(0.016, (Date.now() - startTimeRef.current) / 60000)
+      : 0.016;
 
-    // Gross raw WPM: (total characters / 5) / elapsed minutes
-    const rawWpm = Math.max(0, Math.round(totalTypedChars / 5 / timeInMinutes));
-    // Official Net WPM: (correct characters / 5) / elapsed minutes
-    const netWpm = Math.max(0, Math.round(correctChars / 5 / timeInMinutes));
+    const rawWpm = Math.round(totalChars / 5 / elapsedMin);
+    const netWpm = Math.max(0, Math.round(correct / 5 / elapsedMin));
+    const totalAttempted = correct + incorrect + extra;
+    const accuracy = totalAttempted > 0 ? Math.round((correct / totalAttempted) * 100) : 100;
 
-    // Accuracy: (correct keystrokes ÷ total keystrokes) * 100
-    const accuracy =
-      keystrokes.total > 0
-        ? Math.round((keystrokes.correct / keystrokes.total) * 1000) / 10
-        : 100;
-
-    const calculated = {
-      correctChars,
-      incorrectChars,
-      extraChars,
-      totalTypedChars,
+    const currentStats = {
+      correctChars: correct,
+      incorrectChars: incorrect,
+      extraChars: extra,
+      totalTypedChars: totalChars,
       rawWpm,
       netWpm,
       accuracy,
-      errors: incorrectChars + extraChars
+      errors: incorrect + extra
     };
+    statsRef.current = currentStats;
+    return currentStats;
+  }, [typedWords, words, currentWordIndex, inputVal]);
 
-    statsRef.current = calculated;
-    return calculated;
-  }, [words, typedWords, currentWordIndex, inputVal, elapsedSeconds, keystrokes]);
-
-  // Finish test handler
-  const finishTest = useCallback(() => {
+  const finishTest = useCallback(async () => {
+    if (testFinished) return;
     setTestFinished(true);
+    const finalStats = computeCurrentStats();
 
-    const currentStats = statsRef.current;
-    const isPassing = isAssessment
-      ? currentStats.accuracy >= (initialTest?.minAccuracy || 90) && currentStats.netWpm >= 20
-      : currentStats.accuracy >= 90;
-
-    if (isPassing) {
+    try {
       confetti({
         particleCount: 80,
         spread: 70,
         origin: { y: 0.6 }
       });
-    }
+    } catch {}
 
-    // If logged in as student or in assessment mode, record submission in persistent state
-    if (currentUser) {
-      const studentClass = classes.find(c => c.id === currentUser.classId) || classes[0];
-      submitAttempt(attemptIdRef.current || '', {
-        testId: initialTest?.id || `practice-${activeMode}`,
-        testTitle: initialTest?.title || `Practice Test (${activeMode.toUpperCase()})`,
-        testCategory: initialTest?.category || (activeMode === 'code' ? 'code' : activeMode === 'story' ? 'story' : 'standard'),
-        language: initialTest?.language || 'none',
-        studentId: currentUser.id,
-        studentName: currentUser.name,
-        rollNo: currentUser.rollNo || currentUser.username,
-        classId: studentClass?.id || '',
-        className: studentClass?.name || 'CSE Alpha (2024-28)',
-        wpm: currentStats.netWpm,
-        rawWpm: currentStats.rawWpm,
-        netWpm: currentStats.netWpm,
-        accuracy: currentStats.accuracy,
-        errors: currentStats.errors,
-        totalChars: currentStats.totalTypedChars,
-        correctChars: currentStats.correctChars,
-        timeTaken: Math.max(1, Math.round(elapsedSeconds)),
-        backspaces: backspacesRef.current,
-        totalKeystrokes: totalKeystrokesRef.current,
-        proctorBlurFlags,
-        passed: isPassing,
-        history: speedHistory
-      });
-    }
-  }, [activeMode, classes, currentUser, elapsedSeconds, initialTest, isAssessment, proctorBlurFlags, submitAttempt, speedHistory]);
+    const submissionPayload = {
+      testId: initialTest ? initialTest.id : `practice-${activeMode}-${Date.now()}`,
+      testTitle: initialTest ? initialTest.title : `Free Practice (${activeMode.toUpperCase()})`,
+      studentId: currentUser?.id || 'guest',
+      studentName: currentUser?.name || 'Guest Typist',
+      rollNo: currentUser?.rollNo || 'GUEST',
+      grossWpm: finalStats.rawWpm,
+      netWpm: finalStats.netWpm,
+      accuracy: finalStats.accuracy,
+      errorCount: finalStats.errors,
+      characterCount: finalStats.totalTypedChars,
+      timeSpentSeconds: Math.max(1, Math.round(elapsedSeconds)),
+      history: speedHistory,
+      passed: finalStats.accuracy >= (initialTest?.minAccuracy || 90)
+    };
 
-  // Real-time High Frequency Clock:
-  // Measures real elapsed time via performance.now().
-  // Once the first character is typed, the timer continues running even when the user stops typing.
-  // Never pauses/freezes simply because there is no keypress.
-  // Pausing while typing naturally reduces WPM because elapsed time continues.
+    if (attemptIdRef.current) {
+      await submitAttempt(attemptIdRef.current, submissionPayload);
+    } else {
+      await recordSubmission(submissionPayload);
+    }
+  }, [
+    testFinished,
+    computeCurrentStats,
+    initialTest,
+    activeMode,
+    currentUser,
+    elapsedSeconds,
+    speedHistory,
+    submitAttempt,
+    recordSubmission
+  ]);
+
   useEffect(() => {
     if (!testStarted || testFinished) return;
 
     const interval = setInterval(() => {
-      if (!startTimeRef.current) return;
-      const now = performance.now();
-      const realElapsedSec = (now - startTimeRef.current) / 1000;
-      setElapsedSeconds(realElapsedSec);
+      const now = Date.now();
+      const elapsed = (now - (startTimeRef.current || now)) / 1000;
+      setElapsedSeconds(elapsed);
 
-      // Handle timed test mode & assessment countdown
       if (activeMode === 'time' || isAssessment) {
-        const timeLimit = initialTest?.timeLimit || timeOption;
-        const remaining = Math.max(0, Math.ceil(timeLimit - realElapsedSec));
+        const remaining = Math.max(0, timeOption - Math.floor(elapsed));
         setTimeLeft(remaining);
-
-        if (realElapsedSec >= timeLimit) {
-          clearInterval(interval);
+        if (remaining <= 0) {
           finishTest();
           return;
         }
       }
 
-      // Record progression point once every second for the velocity graph
-      const currentSecInt = Math.floor(realElapsedSec);
-      if (currentSecInt > lastRecordedSecondRef.current) {
-        lastRecordedSecondRef.current = currentSecInt;
-        const currentStats = statsRef.current;
-        setSpeedHistory(hist => [
-          ...hist,
+      const currentSec = Math.floor(elapsed);
+      if (currentSec > lastRecordedSecondRef.current) {
+        lastRecordedSecondRef.current = currentSec;
+        const currentStats = computeCurrentStats();
+        setSpeedHistory(prev => [
+          ...prev,
           {
-            second: currentSecInt,
+            second: currentSec,
             wpm: currentStats.netWpm,
             rawWpm: currentStats.rawWpm,
             errors: currentStats.errors,
@@ -519,66 +384,41 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
           }
         ]);
       }
-    }, 50);
+    }, 100);
 
     return () => clearInterval(interval);
-  }, [testStarted, testFinished, activeMode, isAssessment, initialTest, timeOption, finishTest]);
+  }, [testStarted, testFinished, activeMode, isAssessment, timeOption, finishTest, computeCurrentStats]);
 
-  // Keyboard Handlers - Tracks exact keystrokes, correct/incorrect, backspaces
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (testFinished) return;
 
-    // Start timer on first keystroke using high-precision performance timestamp
-    if (!testStarted) {
-      startTimeRef.current = performance.now();
-      setTestStarted(true);
-    }
-
-    // Audio click feedback
     if (soundEnabled) {
       if (e.key === 'Backspace' || e.key.length === 1) {
         soundController.playKeyClick();
       }
     }
 
-    // Tab + Enter shortcut handling in Practice Arena
-    if (!isAssessment && e.key === 'Tab') {
-      e.preventDefault();
-      tabDownRef.current = true;
-      tabPressedRef.current = true;
-      clearTimeout(tabTimerRef.current);
-      tabTimerRef.current = setTimeout(() => {
-        tabPressedRef.current = false;
-      }, 1500);
-      return;
+    if (!testStarted) {
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        setTestStarted(true);
+        startTimeRef.current = Date.now();
+      }
     }
 
-    if (!isAssessment && e.key === 'Enter' && (tabDownRef.current || tabPressedRef.current)) {
-      e.preventDefault();
-      tabDownRef.current = false;
-      tabPressedRef.current = false;
-      clearTimeout(tabTimerRef.current);
-      resetTest();
-      return;
-    }
-
-    // Ignore modifier keys alone
     if (['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Tab'].includes(e.key)) {
       return;
     }
 
     const currentTargetWord = (words[currentWordIndex] || '').trim();
 
-    // Handle Backspace
     if (e.key === 'Backspace') {
       totalKeystrokesRef.current += 1;
       backspacesRef.current += 1;
-      setKeystrokes({
-        total: totalKeystrokesRef.current,
-        correct: correctKeystrokesRef.current,
-        incorrect: incorrectKeystrokesRef.current,
-        backspaces: backspacesRef.current
-      });
+      setKeystrokes(prev => ({
+        ...prev,
+        total: prev.total + 1,
+        backspaces: prev.backspaces + 1
+      }));
 
       if (inputVal === '' && currentWordIndex > 0) {
         e.preventDefault();
@@ -587,50 +427,45 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
         setCurrentWordIndex(prevIndex);
         setInputVal(prevWord);
         setTypedWords(prev => prev.slice(0, -1));
+        return;
       }
       return;
     }
 
-    // Handle Space bar or Enter (advance to next word)
     if (e.key === ' ' || e.key === 'Enter') {
       e.preventDefault();
-      if (!inputVal.trim() && inputVal !== '') {
-        return;
-      }
+      if (!inputVal.trim() && inputVal !== '') return;
 
       totalKeystrokesRef.current += 1;
-      // If the word was completed correctly, space was a correct keystroke; otherwise incorrect
       if (inputVal === currentTargetWord) {
         correctKeystrokesRef.current += 1;
       } else {
         incorrectKeystrokesRef.current += 1;
       }
 
-      setKeystrokes({
-        total: totalKeystrokesRef.current,
-        correct: correctKeystrokesRef.current,
-        incorrect: incorrectKeystrokesRef.current,
-        backspaces: backspacesRef.current
-      });
+      setKeystrokes(prev => ({
+        ...prev,
+        total: prev.total + 1,
+        correct: inputVal === currentTargetWord ? prev.correct + 1 : prev.correct,
+        incorrect: inputVal !== currentTargetWord ? prev.incorrect + 1 : prev.incorrect
+      }));
 
-      const updatedWords = [...typedWords];
-      updatedWords[currentWordIndex] = inputVal;
+      const updated = [...typedWords];
+      updated[currentWordIndex] = inputVal;
 
-      // Completed all words in test (e.g. in word count mode or end of text)
       if (currentWordIndex + 1 >= words.length) {
-        setTypedWords(updatedWords);
+        setTypedWords(updated);
         finishTest();
         return;
       }
 
-      updatedWords.push('');
-      setTypedWords(updatedWords);
+      updated.push('');
+      setTypedWords(updated);
       setCurrentWordIndex(prev => prev + 1);
       setInputVal('');
       return;
     }
 
-    // Handle printable single characters
     if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
       totalKeystrokesRef.current += 1;
       const charIndex = inputVal.length;
@@ -638,132 +473,54 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
         correctKeystrokesRef.current += 1;
       } else {
         incorrectKeystrokesRef.current += 1;
+        if (soundEnabled) soundController.playErrorSound();
       }
 
-      setKeystrokes({
-        total: totalKeystrokesRef.current,
-        correct: correctKeystrokesRef.current,
-        incorrect: incorrectKeystrokesRef.current,
-        backspaces: backspacesRef.current
-      });
+      setKeystrokes(prev => ({
+        ...prev,
+        total: prev.total + 1,
+        correct:
+          charIndex < currentTargetWord.length && e.key === currentTargetWord[charIndex]
+            ? prev.correct + 1
+            : prev.correct,
+        incorrect:
+          charIndex >= currentTargetWord.length || e.key !== currentTargetWord[charIndex]
+            ? prev.incorrect + 1
+            : prev.incorrect
+      }));
     }
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (testFinished) return;
-    const val = e.target.value;
-    setInputVal(val);
+    setInputVal(e.target.value);
+  };
 
-    const currentTarget = words[currentWordIndex] || '';
-    if (val.length > 0 && soundEnabled) {
-      const lastCharIndex = val.length - 1;
-      if (lastCharIndex < currentTarget.length && val[lastCharIndex] !== currentTarget[lastCharIndex]) {
-        soundController.playErrorSound();
-      }
+  const handlePaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    if (attemptIdRef.current && currentUser) {
+      logViolation(attemptIdRef.current, currentUser.id, 'paste_attempt', {
+        time: Date.now()
+      });
     }
   };
 
-  // Anti-cheat clipboard block
-  const handlePaste = (e: React.ClipboardEvent) => {
-    e.preventDefault();
-    setProctorBlurFlags(f => f + 1);
-    setShowBlurWarning(true);
-    setTimeout(() => setShowBlurWarning(false), 4000);
-  };
-
-  if (attemptBlockedError) {
-    return (
-      <div className="max-w-3xl mx-auto px-4 py-12 flex flex-col items-center justify-center min-h-[50vh]">
-        <div className="bg-rose-950/80 border-2 border-rose-500 rounded-2xl p-8 text-center space-y-5 shadow-2xl shadow-rose-950/50">
-          <div className="w-16 h-16 mx-auto rounded-full bg-rose-500/20 border border-rose-500/50 flex items-center justify-center text-rose-400">
-            <ShieldAlert className="w-8 h-8" />
-          </div>
-          <div>
-            <h2 className="text-2xl font-bold text-rose-200">Examination Access Restricted</h2>
-            <p className="text-sm text-rose-300/80 mt-2 max-w-lg mx-auto font-mono">
-              {attemptBlockedError}
-            </p>
-          </div>
-          {onExitProctored && (
-            <button
-              onClick={onExitProctored}
-              className="mt-4 px-6 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-sm transition-colors border border-slate-700 shadow-md"
-            >
-              Return to Dashboard
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  }
+  const stats = statsRef.current;
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
-
-      {/* Anti-cheat tab switch warning banner */}
-      {showBlurWarning && (
-        <div className="bg-rose-500/15 border border-rose-500/40 text-rose-300 p-3 rounded-xl flex items-center justify-between animate-bounce text-xs font-semibold">
-          <div className="flex items-center gap-2">
-            <ShieldAlert className="w-4 h-4 text-rose-400" />
-            <span>
-              Proctor Warning: Pasting or unfocusing the window is forbidden during testing!
-            </span>
-          </div>
-          <span className="font-mono bg-rose-950/80 px-2 py-0.5 rounded border border-rose-500/30">
-            Flags: {proctorBlurFlags}
-          </span>
-        </div>
-      )}
-
-      {/* Assessment Header if Proctored */}
-      {isAssessment && initialTest ? (
-        <div className="bg-slate-900 border border-cyan-500/30 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg shadow-cyan-500/5">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 text-[10px] font-mono font-bold tracking-wider uppercase border border-cyan-500/30">
-                PROCTORED ASSESSMENT
-              </span>
-              <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px] font-mono capitalize">
-                {initialTest.category} module
-              </span>
-              {initialTest.language && initialTest.language !== 'none' && (
-                <span className="px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 text-[10px] font-mono">
-                  {initialTest.language}
-                </span>
-              )}
-            </div>
-            <h2 className="text-lg sm:text-xl font-extrabold text-slate-100">{initialTest.title}</h2>
-            <p className="text-xs text-slate-400 max-w-xl">{initialTest.description}</p>
-          </div>
-
-          <div className="flex items-center gap-4 text-xs">
-            <div className="text-right">
-              <div className="text-[10px] text-slate-400 font-mono">TARGET CRITERIA</div>
-              <div className="font-bold text-cyan-400">Min {initialTest.minAccuracy}% Accuracy</div>
-            </div>
-            {onExitProctored && (
-              <button
-                onClick={onExitProctored}
-                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors"
-              >
-                Exit Assessment
-              </button>
-            )}
-          </div>
-        </div>
-      ) : (
-        /* Mode Switch Bar (Monkeytype Style) */
-        <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/90 border border-slate-800 p-2.5 rounded-2xl">
-          {/* Modes */}
-          <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+    <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+      {/* Mode Controls Bar */}
+      {!isAssessment && (
+        <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-900 border border-slate-800 p-3.5 rounded-2xl shadow-sm">
+          <div className="flex items-center gap-2 text-xs font-mono">
             <button
               onClick={() => {
                 setActiveMode('time');
                 resetTest();
               }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
                 activeMode === 'time'
-                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -776,9 +533,9 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
                 setActiveMode('words');
                 resetTest();
               }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
                 activeMode === 'words'
-                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -791,9 +548,9 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
                 setActiveMode('story');
                 resetTest();
               }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
                 activeMode === 'story'
-                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -806,9 +563,9 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
                 setActiveMode('code');
                 resetTest();
               }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
                 activeMode === 'code'
-                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -817,7 +574,6 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
             </button>
           </div>
 
-          {/* Sub-options based on active mode */}
           <div className="flex items-center gap-2 text-xs font-mono">
             {activeMode === 'time' && (
               <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
@@ -828,34 +584,13 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
                       setTimeOption(sec);
                       resetTest();
                     }}
-                    className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                    className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
                       timeOption === sec
-                        ? 'text-cyan-400 bg-cyan-500/15'
+                        ? 'text-emerald-400 bg-emerald-500/15'
                         : 'text-slate-500 hover:text-slate-300'
                     }`}
                   >
-                    {sec}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {activeMode === 'words' && (
-              <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
-                {[10, 25, 50, 100].map(cnt => (
-                  <button
-                    key={cnt}
-                    onClick={() => {
-                      setWordOption(cnt);
-                      resetTest();
-                    }}
-                    className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
-                      wordOption === cnt
-                        ? 'text-cyan-400 bg-cyan-500/15'
-                        : 'text-slate-500 hover:text-slate-300'
-                    }`}
-                  >
-                    {cnt}
+                    {sec}s
                   </button>
                 ))}
               </div>
@@ -871,7 +606,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
             <div className="text-[11px] font-mono text-slate-400 uppercase tracking-wider">
               Net Speed
             </div>
-            <div className="text-2xl font-black font-mono text-cyan-400">{stats.netWpm}</div>
+            <div className="text-2xl font-black font-mono text-emerald-400">{stats.netWpm} WPM</div>
           </div>
           <div className="text-[11px] font-mono text-slate-500 text-right">
             raw <span className="text-slate-300 font-bold">{stats.rawWpm}</span>
@@ -883,11 +618,10 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
             <div className="text-[11px] font-mono text-slate-400 uppercase tracking-wider">
               Accuracy
             </div>
-            <div className="text-2xl font-black font-mono text-slate-100">{stats.accuracy}%</div>
+            <div className="text-2xl font-black font-mono text-amber-400">{stats.accuracy}%</div>
           </div>
           <div className="text-[11px] font-mono text-slate-500 text-right">
             err <span className="text-rose-400 font-bold">{stats.errors}</span>
-            <div className="text-[10px] text-slate-600">{keystrokes.backspaces} bksp</div>
           </div>
         </div>
 
@@ -896,30 +630,30 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
             <div className="text-[11px] font-mono text-slate-400 uppercase tracking-wider">
               {activeMode === 'time' || isAssessment ? 'Timer Left' : 'Elapsed'}
             </div>
-            <div className="text-2xl font-black font-mono text-cyan-400">
+            <div className="text-2xl font-black font-mono text-slate-100">
               {activeMode === 'time' || isAssessment
                 ? `${timeLeft}s`
                 : `${Math.floor(elapsedSeconds)}s`}
             </div>
           </div>
-          <Clock className="w-5 h-5 text-slate-700" />
+          <Clock className="w-5 h-5 text-slate-600" />
         </div>
 
         <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl flex items-center justify-between">
           <div>
             <div className="text-[11px] font-mono text-slate-400 uppercase tracking-wider">
-              Proctor Flags
+              Proctor Status
             </div>
             <div
-              className={`text-2xl font-black font-mono ${
+              className={`text-sm font-black font-mono mt-1 ${
                 proctorBlurFlags > 0 ? 'text-rose-400 animate-pulse' : 'text-emerald-400'
               }`}
             >
-              {proctorBlurFlags}
+              {proctorBlurFlags > 0 ? `Flagged (${proctorBlurFlags})` : 'Secured'}
             </div>
           </div>
           <ShieldAlert
-            className={`w-5 h-5 ${proctorBlurFlags > 0 ? 'text-rose-500' : 'text-slate-700'}`}
+            className={`w-5 h-5 ${proctorBlurFlags > 0 ? 'text-rose-500' : 'text-emerald-500/40'}`}
           />
         </div>
       </div>
@@ -929,116 +663,85 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
         <>
           <div
             onClick={() => inputRef.current?.focus()}
-          onCopy={(e) => e.preventDefault()}
-          onCut={(e) => e.preventDefault()}
-          onContextMenu={(e) => e.preventDefault()}
-          className="relative bg-slate-900/90 border border-slate-800 rounded-2xl p-6 sm:p-8 cursor-text select-none shadow-xl min-h-[260px] flex flex-col justify-center"
-        >
-          {/* Hidden text input for handling keyboard events smoothly */}
-          <input
-            ref={inputRef}
-            type="text"
-            value={inputVal}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            autoFocus
-            className="absolute inset-0 opacity-0 cursor-default"
-            aria-label="Typing input area"
-          />
-
-          {/* Words Container */}
-          <div
-            ref={textContainerRef}
-            className="max-h-60 overflow-y-auto font-mono text-lg sm:text-2xl leading-relaxed tracking-wide space-x-2 text-left relative transition-all"
-            style={{ fontFamily: "'Fira Code', monospace" }}
+            onCopy={e => e.preventDefault()}
+            onCut={e => e.preventDefault()}
+            onContextMenu={e => e.preventDefault()}
+            className="relative bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 cursor-text select-none shadow-xl min-h-[260px] flex flex-col justify-center"
           >
-            {words.map((rawWord, wIdx) => {
-              const isActive = wIdx === currentWordIndex;
-              const currentInput = isActive ? inputVal : typedWords[wIdx] || '';
-              return (
-                <WordRenderer
-                  key={wIdx}
-                  rawWord={rawWord}
-                  wIdx={wIdx}
-                  isActive={isActive}
-                  currentInput={currentInput}
-                  activeWordRef={isActive ? activeWordRef : null}
-                />
-              );
-            })}
-          </div>
+            <input
+              ref={inputRef}
+              type="text"
+              value={inputVal}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              autoFocus
+              className="absolute inset-0 opacity-0 cursor-default"
+              aria-label="Typing input area"
+            />
 
-          {/* Quick bottom hint */}
-          <div className="mt-6 flex items-center justify-between text-xs text-slate-500 font-mono pt-4 border-t border-slate-800/80">
-            <div>
-              {!testStarted ? (
-                <span className="text-cyan-400/90 font-semibold animate-pulse">
-                  Start typing to begin assessment timer...
-                </span>
-              ) : (
-                <span>Space to advance word • Backspace to correct</span>
-              )}
+            {/* Words Container */}
+            <div
+              ref={textContainerRef}
+              className="max-h-60 overflow-y-auto font-mono text-lg sm:text-2xl leading-relaxed tracking-wide space-x-2 text-left relative transition-all"
+            >
+              {words.map((rawWord, wIdx) => {
+                const isActive = wIdx === currentWordIndex;
+                const currentInput = isActive ? inputVal : typedWords[wIdx] || '';
+                return (
+                  <WordRenderer
+                    key={wIdx}
+                    rawWord={rawWord}
+                    wIdx={wIdx}
+                    isActive={isActive}
+                    currentInput={currentInput}
+                    activeWordRef={isActive ? activeWordRef : null}
+                  />
+                );
+              })}
             </div>
-            {!initialTest?.isCustomAssignment && (
-              <div className="flex items-center gap-3">
-                <span className="hidden sm:inline-flex items-center gap-1.5 text-[11px] text-slate-500 font-mono">
-                  <span>restart</span>
-                  <kbd className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 font-semibold text-[10px]">Tab</kbd>
-                  <span>+</span>
-                  <kbd className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 font-semibold text-[10px]">Enter</kbd>
-                </span>
+
+            <div className="mt-6 flex items-center justify-between text-xs text-slate-500 font-mono pt-4 border-t border-slate-800/80">
+              <div>
+                {!testStarted ? (
+                  <span className="text-emerald-400 font-semibold animate-pulse">
+                    Start typing to begin examination timer...
+                  </span>
+                ) : (
+                  <span>Space to advance word • Backspace to correct</span>
+                )}
+              </div>
+              {!initialTest?.isCustomAssignment && (
                 <button
                   onClick={resetTest}
-                  className="flex items-center gap-1.5 text-slate-400 hover:text-cyan-400 transition-colors"
-                  title="Press Tab + Enter to restart anytime"
+                  className="flex items-center gap-1.5 text-slate-400 hover:text-emerald-400 transition-colors cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>restart test</span>
                 </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
 
-        {/* Live D3 Session Telemetry Line Chart */}
-        {testStarted && !testFinished && (
-          <div className="w-full">
-            <D3SessionChart data={speedHistory} height={170} isLive={true} />
+          <div className="w-full pt-2">
+            <MechanicalKeyboard interactive={true} compact={false} />
           </div>
-        )}
-
-        {/* Interactive Mechanical Keyboard with real-time keypresses and switch profiles */}
-        <div className="w-full pt-2">
-          <MechanicalKeyboard interactive={true} compact={false} />
-        </div>
         </>
       ) : (
-        /* Results Scorecard (Typing.com & Monkeytype style) */
+        /* Results Scorecard */
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-800">
             <div>
               <div className="flex items-center gap-2">
-                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
                   Assessment Completed
                 </span>
-                {initialTest?.isCustomAssignment && (
-                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                    Single Attempt Recorded
-                  </span>
-                )}
-                {proctorBlurFlags > 0 ? (
-                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/15 text-rose-300 border border-rose-500/30 flex items-center gap-1">
-                    <AlertTriangle className="w-3 h-3" /> Flagged ({proctorBlurFlags} Tab Switches)
-                  </span>
-                ) : (
-                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" /> Proctor Clean
-                  </span>
-                )}
+                <span className="text-xs font-mono text-slate-400">
+                  DOTT Verified Result
+                </span>
               </div>
               <h3 className="text-2xl font-black text-slate-100 mt-2">
-                {initialTest ? initialTest.title : 'Typing Speed Evaluation'}
+                {initialTest ? initialTest.title : 'Speed & Accuracy Benchmark'}
               </h3>
             </div>
 
@@ -1046,7 +749,7 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
               {!initialTest?.isCustomAssignment && (
                 <button
                   onClick={resetTest}
-                  className="px-4 py-2.5 rounded-xl font-bold text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors flex items-center gap-2"
+                  className="px-4 py-2.5 rounded-xl font-bold text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors flex items-center gap-2 cursor-pointer"
                 >
                   <RotateCcw className="w-4 h-4" />
                   <span>Retake Test</span>
@@ -1056,71 +759,50 @@ export const TypingArena: React.FC<TypingArenaProps> = ({ initialTest, onExitPro
               {onExitProctored && (
                 <button
                   onClick={onExitProctored}
-                  className="px-4 py-2.5 rounded-xl font-bold text-xs bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition-colors flex items-center gap-1.5 shadow-sm shadow-cyan-500/20"
+                  className="px-4 py-2.5 rounded-xl font-bold text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-colors flex items-center gap-1.5 shadow-sm shadow-emerald-500/20 cursor-pointer"
                 >
-                  <span>View Dashboard & Leaderboard</span>
+                  <span>Return to Portal</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               )}
             </div>
           </div>
 
-          {/* Core Big Metric Badges */}
+          {/* Core Metrics Badges */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-slate-950/80 border border-slate-800 p-4 rounded-2xl text-center">
-              <div className="text-xs font-mono text-slate-400">NET WPM</div>
-              <div className="text-4xl font-black font-mono text-cyan-400 mt-1">{stats.netWpm}</div>
-              <div className="text-[11px] text-slate-500 mt-1">Official Benchmark</div>
+              <div className="text-xs font-mono text-slate-400 uppercase">NET WPM</div>
+              <div className="text-4xl font-black font-mono text-emerald-400 mt-1">{stats.netWpm}</div>
+              <div className="text-[11px] text-slate-500 mt-1">Verified Net Speed</div>
             </div>
 
             <div className="bg-slate-950/80 border border-slate-800 p-4 rounded-2xl text-center">
-              <div className="text-xs font-mono text-slate-400">ACCURACY</div>
-              <div className="text-4xl font-black font-mono text-slate-100 mt-1">{stats.accuracy}%</div>
-              <div className="text-[11px] text-slate-500 mt-1">{stats.errors} errors made</div>
+              <div className="text-xs font-mono text-slate-400 uppercase">ACCURACY</div>
+              <div className="text-4xl font-black font-mono text-amber-400 mt-1">{stats.accuracy}%</div>
+              <div className="text-[11px] text-slate-500 mt-1">{stats.errors} errors recorded</div>
             </div>
 
             <div className="bg-slate-950/80 border border-slate-800 p-4 rounded-2xl text-center">
-              <div className="text-xs font-mono text-slate-400">RAW GROSS WPM</div>
+              <div className="text-xs font-mono text-slate-400 uppercase">RAW GROSS WPM</div>
               <div className="text-4xl font-black font-mono text-slate-100 mt-1">{stats.rawWpm}</div>
               <div className="text-[11px] text-slate-500 mt-1">Total keystrokes: {keystrokes.total}</div>
             </div>
 
             <div className="bg-slate-950/80 border border-slate-800 p-4 rounded-2xl text-center">
-              <div className="text-xs font-mono text-slate-400">TIME TAKEN</div>
-              <div className="text-4xl font-black font-mono text-indigo-300 mt-1">
+              <div className="text-xs font-mono text-slate-400 uppercase">TIME TAKEN</div>
+              <div className="text-4xl font-black font-mono text-slate-100 mt-1">
                 {Math.max(1, Math.round(elapsedSeconds))}s
               </div>
               <div className="text-[11px] text-slate-500 mt-1">
                 {stats.accuracy >= (initialTest?.minAccuracy || 90) ? (
-                  <span className="text-emerald-400 font-bold">PASSED CRITERIA</span>
+                  <span className="text-emerald-400 font-bold">PASSED BENCHMARK</span>
                 ) : (
-                  <span className="text-rose-400 font-bold">BELOW TARGET</span>
+                  <span className="text-rose-400 font-bold">NEEDS PRACTICE</span>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Granular Character & Keystroke Breakdown Strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-950/60 p-4 rounded-2xl border border-slate-800/80 text-xs font-mono">
-            <div className="flex flex-col">
-              <span className="text-slate-500 text-[10px]">CORRECT CHARS</span>
-              <span className="text-emerald-400 font-bold text-base mt-0.5">{stats.correctChars}</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-slate-500 text-[10px]">INCORRECT / MISSED</span>
-              <span className="text-rose-400 font-bold text-base mt-0.5">{stats.errors}</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-slate-500 text-[10px]">CORRECT KEYSTROKES</span>
-              <span className="text-cyan-400 font-bold text-base mt-0.5">{keystrokes.correct} / {keystrokes.total}</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-slate-500 text-[10px]">BACKSPACES USED</span>
-              <span className="text-amber-400 font-bold text-base mt-0.5">{keystrokes.backspaces}</span>
-            </div>
-          </div>
-
-          {/* D3.js Comprehensive Session Telemetry Chart */}
           <D3SessionChart data={speedHistory} height={220} isLive={false} />
         </div>
       )}

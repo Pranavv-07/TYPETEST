@@ -9,14 +9,16 @@ import {
 } from '../../types';
 import {
   getActiveCurriculum,
-  saveLessonOverride
-} from '../../services/academyService';
-import {
+  saveLessonOverride,
   getStudentAcademyProfile,
   setTrainerOverrideUnlockAll,
   getAcademyAssignments,
-  saveAcademyAssignment
+  saveAcademyAssignment,
+  deleteAcademyAssignment,
+  isAcademyGloballyOpen,
+  setAcademyGloballyOpen
 } from '../../services/academyService';
+import { formatISTDateOnly } from '../../utils/dateUtils';
 import {
   GraduationCap,
   BookOpen,
@@ -35,7 +37,10 @@ import {
   CheckCircle2,
   BarChart3,
   Calendar,
-  Award
+  Award,
+  Trash2,
+  Globe,
+  Sliders
 } from 'lucide-react';
 
 interface TrainerAcademyManagementProps {
@@ -53,6 +58,7 @@ export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> =
 }) => {
   const [activeTab, setActiveTab] = useState<'curriculum' | 'students' | 'assignments'>('curriculum');
   const [curriculum, setCurriculum] = useState<AcademyCurriculum>(() => getActiveCurriculum());
+  const [globallyOpen, setGloballyOpen] = useState<boolean>(() => isAcademyGloballyOpen());
 
   // Search & Filters
   const [studentSearch, setStudentSearch] = useState('');
@@ -67,14 +73,22 @@ export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> =
   // Assignment Creation Form State
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [assignClassId, setAssignClassId] = useState<string>(classes[0]?.id || '');
-  const [assignTitle, setAssignTitle] = useState('Typing Academy — Beginner Track Assignment');
+  const [assignTitle, setAssignTitle] = useState('Typing Academy — Beginner & Intermediate Track');
   const [assignLevels, setAssignLevels] = useState<number[]>([1, 2, 3]);
+  const [assignStartDate, setAssignStartDate] = useState(
+    new Date().toISOString().split('T')[0]
+  );
   const [assignDueDate, setAssignDueDate] = useState(
     new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0]
   );
   const [assignmentsList, setAssignmentsList] = useState<AcademyAssignment[]>(() =>
     getAcademyAssignments()
   );
+
+  const handleToggleGlobalAcademy = (open: boolean) => {
+    setAcademyGloballyOpen(open);
+    setGloballyOpen(open);
+  };
 
   // Student list with computed progress
   const studentsWithProgress = useMemo(() => {
@@ -158,7 +172,7 @@ export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> =
     const targetClass = classes.find(c => c.id === assignClassId);
     if (!targetClass) return;
 
-    const newAssignment = saveAcademyAssignment({
+    saveAcademyAssignment({
       title: assignTitle,
       classId: assignClassId,
       className: targetClass.name,
@@ -167,7 +181,7 @@ export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> =
       levelIds: assignLevels,
       minWpm: 20,
       minAccuracy: 95,
-      startDate: new Date().toISOString().split('T')[0],
+      startDate: assignStartDate,
       dueDate: assignDueDate,
       status: 'active',
     });
@@ -176,42 +190,66 @@ export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> =
     setShowAssignModal(false);
   };
 
+  const handleDeleteAssignment = (id: string) => {
+    if (confirm('Are you sure you want to remove this academy assignment?')) {
+      deleteAcademyAssignment(id);
+      setAssignmentsList(getAcademyAssignments());
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header Bar */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-amber-500/15 text-amber-300 border border-amber-500/30">
-              Institutional Admin
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+              Department of Technical Training (DOTT)
+            </span>
+            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider ${
+              globallyOpen ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' : 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
+            }`}>
+              {globallyOpen ? 'Status: Unrestricted Practice' : 'Status: Assigned Windows Only'}
             </span>
           </div>
           <h1 className="text-xl sm:text-2xl font-black text-slate-100 flex items-center gap-2 mt-1">
-            <GraduationCap className="w-6 h-6 text-amber-400" />
-            Typing Academy Curriculum & Class Management
+            <GraduationCap className="w-6 h-6 text-emerald-400" />
+            Typing Academy Curriculum & Access Control
           </h1>
           <p className="text-xs text-slate-400">
-            Configure passing benchmarks, assign structured curriculums to classes, monitor struggling students, and manage unlock prerequisites.
+            Configure passing benchmarks (95% min accuracy), assign structured modules to specific classes/batches, and control student access windows.
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 shrink-0">
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <button
+            onClick={() => handleToggleGlobalAcademy(!globallyOpen)}
+            className={`px-4 py-2.5 rounded-2xl border font-bold text-xs transition-all flex items-center gap-2 ${
+              globallyOpen
+                ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                : 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/40'
+            }`}
+          >
+            {globallyOpen ? <Lock className="w-4 h-4 text-amber-400" /> : <Unlock className="w-4 h-4 text-emerald-400" />}
+            <span>{globallyOpen ? 'Lock Academy (Schedule Only)' : 'Unlock Academy for All'}</span>
+          </button>
+
           {onOpenCertificateModal && (
             <button
               onClick={onOpenCertificateModal}
-              className="px-4 py-2.5 rounded-2xl bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/30 font-bold text-xs transition-all flex items-center gap-2"
+              className="px-4 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs transition-all flex items-center gap-2"
             >
-              <Award className="w-4 h-4 text-amber-400" />
+              <Award className="w-4 h-4 text-emerald-400" />
               <span>Issue Certificate</span>
             </button>
           )}
 
           <button
             onClick={() => setShowAssignModal(true)}
-            className="px-5 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-amber-500/20 flex items-center gap-2"
+            className="px-5 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
-            <span>Assign to Class</span>
+            <span>Assign Module to Class</span>
           </button>
         </div>
       </div>
@@ -222,7 +260,7 @@ export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> =
           onClick={() => setActiveTab('curriculum')}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
             activeTab === 'curriculum'
-              ? 'bg-amber-500 text-slate-950 font-black'
+              ? 'bg-emerald-500 text-slate-950 font-black'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
           }`}
         >
@@ -234,7 +272,7 @@ export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> =
           onClick={() => setActiveTab('students')}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
             activeTab === 'students'
-              ? 'bg-amber-500 text-slate-950 font-black'
+              ? 'bg-emerald-500 text-slate-950 font-black'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
           }`}
         >
@@ -246,7 +284,7 @@ export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> =
           onClick={() => setActiveTab('assignments')}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
             activeTab === 'assignments'
-              ? 'bg-amber-500 text-slate-950 font-black'
+              ? 'bg-emerald-500 text-slate-950 font-black'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
           }`}
         >
@@ -258,72 +296,49 @@ export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> =
       {/* TAB 1: CURRICULUM & BENCHMARKS */}
       {activeTab === 'curriculum' && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 gap-4">
-            {curriculum.levels.map(level => (
-              <div
-                key={level.id}
-                className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-md space-y-4"
-              >
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {curriculum.levels.map(lvl => (
+              <div key={lvl.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+                <div className="flex justify-between items-center">
                   <div>
-                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-400">
-                      Level {level.id}
+                    <span className="text-[10px] font-mono uppercase text-emerald-400 font-bold">
+                      Level {lvl.order}
                     </span>
-                    <h3 className="text-lg font-black text-slate-100">
-                      {level.title}
-                    </h3>
-                    <p className="text-xs text-slate-400">{level.description}</p>
+                    <h3 className="font-bold text-slate-100 text-sm">{lvl.title}</h3>
                   </div>
-                  <span className="text-xs font-mono text-slate-500 self-start sm:self-auto">
-                    {level.lessons.length} Lessons
+                  <span className="text-xs text-slate-500 font-mono">
+                    {lvl.lessons.length} Lessons
                   </span>
                 </div>
+                <p className="text-xs text-slate-400 line-clamp-2">{lvl.description}</p>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {level.lessons.map(lesson => (
+                <div className="space-y-2 pt-2 border-t border-slate-800/80">
+                  {lvl.lessons.map(lsn => (
                     <div
-                      key={lesson.id}
-                      className="p-4 rounded-2xl bg-slate-950 border border-slate-800/80 flex flex-col justify-between gap-3 shadow-inner"
+                      key={lsn.id}
+                      className="p-2.5 rounded-xl bg-slate-950 border border-slate-800/60 flex items-center justify-between text-xs"
                     >
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-mono text-amber-400 font-bold uppercase">
-                            Lesson {lesson.order}
-                          </span>
-                          <button
-                            onClick={() => {
-                              setEditingLesson(lesson);
-                              setEditMinAcc(lesson.minAccuracy);
-                              setEditMinWpm(lesson.minWpm);
-                              setEditDuration(lesson.assessmentDuration);
-                            }}
-                            className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-amber-300 transition-colors"
-                            title="Edit passing criteria"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                        <h4 className="text-sm font-bold text-slate-200">
-                          {lesson.title}
-                        </h4>
-                        <p className="text-xs text-slate-400 line-clamp-2">
-                          {lesson.objective}
-                        </p>
+                      <div className="truncate pr-2">
+                        <span className="font-mono text-[10px] text-slate-500 mr-1.5">
+                          {lsn.order}.
+                        </span>
+                        <span className="font-semibold text-slate-200">{lsn.title}</span>
                       </div>
-
-                      <div className="pt-2 border-t border-slate-900 flex items-center justify-between font-mono text-xs text-slate-400">
-                        <span className="flex items-center gap-1">
-                          <Target className="w-3 h-3 text-emerald-400" />
-                          Min {lesson.minAccuracy}%
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-800/50 px-1.5 py-0.5 rounded">
+                          ≥{lsn.passingCriteria.minAccuracy}% Acc
                         </span>
-                        <span className="flex items-center gap-1">
-                          <Zap className="w-3 h-3 text-cyan-400" />
-                          Min {lesson.minWpm} WPM
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Clock className="w-3 h-3 text-slate-400" />
-                          {lesson.assessmentDuration}s
-                        </span>
+                        <button
+                          onClick={() => {
+                            setEditingLesson(lsn);
+                            setEditMinAcc(lsn.passingCriteria.minAccuracy);
+                            setEditMinWpm(lsn.passingCriteria.minWpm);
+                            setEditDuration(lsn.passingCriteria.assessmentDuration || 60);
+                          }}
+                          className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-emerald-400"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -334,170 +349,183 @@ export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> =
         </div>
       )}
 
-      {/* TAB 2: STUDENTS PROGRESS & OVERRIDES */}
+      {/* TAB 2: STUDENT PROGRESS & OVERRIDES */}
       {activeTab === 'students' && (
         <div className="space-y-4">
-          {/* Filters Bar */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row gap-3 justify-between items-center">
+            <div className="relative w-full sm:w-80">
+              <Search className="w-4 h-4 absolute left-3 top-3 text-slate-500" />
               <input
                 type="text"
-                placeholder="Search students by name or roll number..."
+                placeholder="Search students by name or roll..."
                 value={studentSearch}
                 onChange={e => setStudentSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-slate-900 border border-slate-800 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
               />
             </div>
-
             <select
               value={selectedClassId}
               onChange={e => setSelectedClassId(e.target.value)}
-              className="px-4 py-2.5 rounded-2xl bg-slate-900 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+              className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 w-full sm:w-auto"
             >
-              <option value="all">All Classes ({classes.length})</option>
+              <option value="all">All Classrooms</option>
               {classes.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
+                <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
           </div>
 
-          {/* Students Table */}
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-950 text-slate-400 font-mono text-[11px] uppercase border-b border-slate-800">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-950 border-b border-slate-800 text-slate-400 font-mono text-[10px] uppercase">
+                <tr>
+                  <th className="p-3.5">Student / Roll</th>
+                  <th className="p-3.5">Progress</th>
+                  <th className="p-3.5">Mastered</th>
+                  <th className="p-3.5">Avg WPM</th>
+                  <th className="p-3.5">Avg Accuracy</th>
+                  <th className="p-3.5">Override Access</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60 font-sans">
+                {filteredStudents.length === 0 ? (
                   <tr>
-                    <th className="p-4">Student</th>
-                    <th className="p-4">Roll Number</th>
-                    <th className="p-4">Mastery Progress</th>
-                    <th className="p-4">Speed & Acc</th>
-                    <th className="p-4">Status</th>
-                    <th className="p-4 text-right">Progression Override</th>
+                    <td colSpan={6} className="text-center p-8 text-slate-500 font-mono">
+                      No student records match search filter.
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800 font-sans">
-                  {filteredStudents.length > 0 ? (
-                    filteredStudents.map(item => {
-                      const isOverridden = item.profile.trainerOverrideUnlockAll;
-                      return (
-                        <tr key={item.student.id} className="hover:bg-slate-800/40 transition-colors">
-                          <td className="p-4 font-bold text-slate-100">
-                            {item.student.name}
-                          </td>
-                          <td className="p-4 font-mono text-slate-400">
-                            {item.student.rollNo || 'N/A'}
-                          </td>
-                          <td className="p-4">
-                            <div className="space-y-1 w-36">
-                              <div className="flex justify-between font-mono text-[10px] text-slate-400">
-                                <span>{item.masteredCount} / {item.totalCount} Lessons</span>
-                                <span className="font-bold text-amber-400">{item.completionPercent}%</span>
-                              </div>
-                              <div className="h-1.5 bg-slate-950 rounded-full overflow-hidden">
-                                <div
-                                  className="h-full bg-amber-400 rounded-full"
-                                  style={{ width: `${item.completionPercent}%` }}
-                                />
-                              </div>
-                            </div>
-                          </td>
-                          <td className="p-4 font-mono">
-                            <span className="text-cyan-300 font-bold">{item.avgWpm} WPM</span>
-                            <span className="text-slate-500 mx-1.5">•</span>
-                            <span className="text-emerald-300 font-bold">{item.avgAcc}% Acc</span>
-                          </td>
-                          <td className="p-4">
-                            {item.isStruggling ? (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-rose-500/15 text-rose-300 border border-rose-500/30 flex items-center gap-1 w-fit">
-                                <AlertTriangle className="w-3 h-3" /> Needs Practice
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 w-fit">
-                                <CheckCircle2 className="w-3 h-3" /> On Track
-                              </span>
-                            )}
-                          </td>
-                          <td className="p-4 text-right">
-                            <button
-                              onClick={() => handleToggleUnlockAll(item.student.id, isOverridden || false)}
-                              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 ml-auto ${
-                                isOverridden
-                                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 hover:bg-amber-500/25'
-                                  : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
-                              }`}
-                            >
-                              {isOverridden ? (
-                                <>
-                                  <Unlock className="w-3 h-3 text-amber-400" />
-                                  <span>Unlocked All</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Lock className="w-3 h-3" />
-                                  <span>Enforce Locks</span>
-                                </>
-                              )}
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  ) : (
-                    <tr>
-                      <td colSpan={6} className="p-8 text-center text-slate-500">
-                        No students found matching current filters.
+                ) : (
+                  filteredStudents.map(item => (
+                    <tr key={item.student.id} className="hover:bg-slate-800/40 transition-colors">
+                      <td className="p-3.5">
+                        <div className="font-bold text-slate-100">{item.student.name}</div>
+                        <div className="text-[11px] font-mono text-emerald-400">{item.student.rollNo}</div>
+                      </td>
+                      <td className="p-3.5">
+                        <div className="w-28 bg-slate-950 rounded-full h-2 border border-slate-800 overflow-hidden mb-1">
+                          <div
+                            className="bg-emerald-500 h-full rounded-full transition-all"
+                            style={{ width: `${item.completionPercent}%` }}
+                          />
+                        </div>
+                        <span className="text-[10px] font-mono text-slate-400">
+                          {item.completionPercent}% Completed
+                        </span>
+                      </td>
+                      <td className="p-3.5 font-mono text-slate-200">
+                        {item.masteredCount} / {item.totalCount}
+                      </td>
+                      <td className="p-3.5 font-mono font-bold text-emerald-400">
+                        {item.avgWpm} WPM
+                      </td>
+                      <td className="p-3.5 font-mono">
+                        <span className={`px-2 py-0.5 rounded ${
+                          item.avgAcc >= 95
+                            ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                            : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                        }`}>
+                          {item.avgAcc}%
+                        </span>
+                      </td>
+                      <td className="p-3.5">
+                        <button
+                          onClick={() =>
+                            handleToggleUnlockAll(item.student.id, Boolean(item.profile.trainerOverrideUnlockAll))
+                          }
+                          className={`px-3 py-1.5 rounded-xl border text-[11px] font-mono font-bold transition-all flex items-center gap-1.5 ${
+                            item.profile.trainerOverrideUnlockAll
+                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                              : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
+                          }`}
+                        >
+                          {item.profile.trainerOverrideUnlockAll ? (
+                            <>
+                              <Unlock className="w-3 h-3 text-emerald-400" />
+                              <span>Unlocked All</span>
+                            </>
+                          ) : (
+                            <>
+                              <Lock className="w-3 h-3 text-slate-500" />
+                              <span>Sequential Lock</span>
+                            </>
+                          )}
+                        </button>
                       </td>
                     </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
 
-      {/* TAB 3: CLASS ASSIGNMENTS */}
+      {/* TAB 3: ASSIGNMENTS */}
       {activeTab === 'assignments' && (
         <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h3 className="font-bold text-slate-100 text-sm">Active Class Academy Assignments</h3>
+            <button
+              onClick={() => setShowAssignModal(true)}
+              className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Create New Assignment</span>
+            </button>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {assignmentsList.map(assignment => (
-              <div
-                key={assignment.id}
-                className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-md space-y-4"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                    Class Assignment
-                  </span>
-                  <span className="text-xs font-mono text-slate-400">
-                    Due: {assignment.dueDate}
-                  </span>
-                </div>
-
-                <div className="space-y-1">
-                  <h3 className="text-base font-bold text-slate-100">{assignment.title}</h3>
-                  <p className="text-xs text-slate-400">Class: <strong className="text-slate-200">{assignment.className}</strong></p>
-                </div>
-
-                <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800/80 font-mono text-xs flex items-center justify-between text-slate-400">
-                  <span>Assigned Levels: <strong className="text-amber-300">Level {assignment.levelIds.join(', ')}</strong></span>
-                  <span>Benchmark: <strong className="text-cyan-300">{assignment.minWpm} WPM</strong> / <strong className="text-emerald-300">{assignment.minAccuracy}%</strong></span>
-                </div>
+            {assignmentsList.length === 0 ? (
+              <div className="col-span-2 p-10 text-center bg-slate-900 border border-slate-800 rounded-2xl text-slate-500 font-mono text-xs">
+                No active academy assignments created yet. Click above to assign modules to classes.
               </div>
-            ))}
+            ) : (
+              assignmentsList.map(a => (
+                <div key={a.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-950 text-emerald-400 border border-emerald-800">
+                        {a.className}
+                      </span>
+                      <h4 className="font-bold text-slate-100 text-sm mt-1">{a.title}</h4>
+                    </div>
+                    <button
+                      onClick={() => handleDeleteAssignment(a.id)}
+                      className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-[11px] font-mono text-slate-400 bg-slate-950 p-3 rounded-xl border border-slate-800/80">
+                    <div>
+                      <span className="text-slate-500 block">Start Date:</span>
+                      <span className="text-slate-300">{formatISTDateOnly(a.startDate)}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">Due Date:</span>
+                      <span className="text-emerald-400 font-bold">{formatISTDateOnly(a.dueDate)}</span>
+                    </div>
+                    <div className="col-span-2 pt-1 border-t border-slate-900 flex justify-between">
+                      <span>Assigned Levels:</span>
+                      <span className="text-slate-200">
+                        {a.levelIds?.length ? `Levels ${a.levelIds.join(', ')}` : 'All Levels'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}
 
-      {/* EDIT LESSON CRITERIA MODAL */}
+      {/* BENCHMARK EDIT MODAL */}
       {editingLesson && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-5">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-5">
             <div>
-              <span className="text-[10px] font-mono font-bold uppercase text-amber-400">
+              <span className="text-[10px] font-mono font-bold uppercase text-emerald-400">
                 Customize Passing Criteria
               </span>
               <h3 className="text-lg font-black text-slate-100">{editingLesson.title}</h3>
@@ -514,7 +542,7 @@ export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> =
                   max={100}
                   value={editMinAcc}
                   onChange={e => setEditMinAcc(Number(e.target.value))}
-                  className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono text-slate-200 focus:outline-none focus:border-amber-500"
+                  className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono text-slate-200 focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
@@ -528,7 +556,7 @@ export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> =
                   max={100}
                   value={editMinWpm}
                   onChange={e => setEditMinWpm(Number(e.target.value))}
-                  className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono text-slate-200 focus:outline-none focus:border-amber-500"
+                  className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono text-slate-200 focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
@@ -542,7 +570,7 @@ export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> =
                   max={600}
                   value={editDuration}
                   onChange={e => setEditDuration(Number(e.target.value))}
-                  className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono text-slate-200 focus:outline-none focus:border-amber-500"
+                  className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono text-slate-200 focus:outline-none focus:border-emerald-500"
                 />
               </div>
             </div>
@@ -556,7 +584,7 @@ export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> =
               </button>
               <button
                 onClick={handleSaveLessonEdit}
-                className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-colors"
+                className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition-colors"
               >
                 Save Benchmark Changes
               </button>
@@ -573,7 +601,7 @@ export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> =
             className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl space-y-5"
           >
             <div>
-              <span className="text-[10px] font-mono font-bold uppercase text-amber-400">
+              <span className="text-[10px] font-mono font-bold uppercase text-emerald-400">
                 Class Curriculum Assignment
               </span>
               <h3 className="text-xl font-black text-slate-100">
@@ -591,7 +619,7 @@ export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> =
                   required
                   value={assignTitle}
                   onChange={e => setAssignTitle(e.target.value)}
-                  className="w-full p-3 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                  className="w-full p-3 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
@@ -602,7 +630,7 @@ export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> =
                 <select
                   value={assignClassId}
                   onChange={e => setAssignClassId(e.target.value)}
-                  className="w-full p-3 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                  className="w-full p-3 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
                 >
                   {classes.map(c => (
                     <option key={c.id} value={c.id}>
@@ -612,17 +640,31 @@ export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> =
                 </select>
               </div>
 
-              <div>
-                <label className="text-xs font-mono text-slate-400 block mb-1">
-                  Due Date
-                </label>
-                <input
-                  type="date"
-                  required
-                  value={assignDueDate}
-                  onChange={e => setAssignDueDate(e.target.value)}
-                  className="w-full p-3 rounded-2xl bg-slate-950 border border-slate-800 text-xs font-mono text-slate-200 focus:outline-none focus:border-amber-500"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-mono text-slate-400 block mb-1">
+                    Start Date (IST)
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={assignStartDate}
+                    onChange={e => setAssignStartDate(e.target.value)}
+                    className="w-full p-3 rounded-2xl bg-slate-950 border border-slate-800 text-xs font-mono text-slate-200 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-mono text-slate-400 block mb-1">
+                    Due Date (IST)
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={assignDueDate}
+                    onChange={e => setAssignDueDate(e.target.value)}
+                    className="w-full p-3 rounded-2xl bg-slate-950 border border-slate-800 text-xs font-mono text-slate-200 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
               </div>
             </div>
 
@@ -636,7 +678,7 @@ export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> =
               </button>
               <button
                 type="submit"
-                className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-colors"
+                className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition-colors"
               >
                 Assign to Class
               </button>

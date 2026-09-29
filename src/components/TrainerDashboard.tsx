@@ -1,12 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { useApp } from '../context/AppContext';
 import {
-  useApp } from '../context/AppContext';
-import { TypingTest, TestCategory, ProgrammingLanguage, TestReport, Student, StudentCertificate } from '../types';
+  TypingTest,
+  TestCategory,
+  ProgrammingLanguage,
+  TestReport,
+  Student,
+  StudentCertificate,
+  ClassRoom
+} from '../types';
 import { LeaderboardModal } from './LeaderboardModal';
 import { ReportModal } from './ReportModal';
 import { CertificateGeneratorModal } from './CertificateGeneratorModal';
 import { CertificateModal } from './CertificateModal';
 import { TrainerAcademyManagement } from './academy/TrainerAcademyManagement';
+import { formatISTDateTime, formatISTDate } from '../utils/dateUtils';
+import {
+  downloadStudentImportTemplate,
+  parseStudentSpreadsheet,
+  exportStudentsToExcel,
+  exportSubmissionsToExcel,
+  ParsedStudentRow
+} from '../utils/excelUtils';
 import {
   Users,
   Plus,
@@ -35,7 +50,14 @@ import {
   UserCheck,
   ExternalLink,
   Award,
-  GraduationCap
+  GraduationCap,
+  Upload,
+  Edit2,
+  Trash2,
+  Activity,
+  Zap,
+  Target,
+  Send
 } from 'lucide-react';
 
 interface TrainerDashboardProps {
@@ -49,8 +71,13 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
     createClass,
     addStudentsToClass,
     students,
+    addStudent,
+    updateStudent,
+    deleteStudent,
+    bulkAddStudents,
     tests,
     createCustomTest,
+    updateCustomTest,
     deleteTest,
     submissions,
     reports,
@@ -62,499 +89,529 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
     downloadReportCSV
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<'monitoring' | 'tests' | 'reports' | 'classes' | 'certificates' | 'academy'>('monitoring');
-  const [isCertModalOpen, setIsCertModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<
+    'monitoring' | 'testbank' | 'students' | 'classes' | 'reports' | 'certificates' | 'academy'
+  >('monitoring');
+
+  // Modals & UI States
+  const [selectedLeaderboardTest, setSelectedLeaderboardTest] = useState<TypingTest | null>(null);
+  const [selectedViewReport, setSelectedViewReport] = useState<TestReport | null>(null);
   const [selectedViewCert, setSelectedViewCert] = useState<StudentCertificate | null>(null);
-  const [certSearchQuery, setCertSearchQuery] = useState('');
-  const [certFilterType, setCertFilterType] = useState<'all' | 'pr' | 'master'>('all');
+  const [isCertModalOpen, setIsCertModalOpen] = useState(false);
+  const [showGenCertModal, setShowGenCertModal] = useState(false);
 
-  // Modal states
-  const [showCreateClassModal, setShowCreateClassModal] = useState(false);
-  const [newClassName, setNewClassName] = useState('');
-  const [newClassDesc, setNewClassDesc] = useState('');
-
-  const [selectedClassForStudents, setSelectedClassForStudents] = useState<string | null>(null);
-  const [studentSearchTerm, setStudentSearchTerm] = useState('');
-  const [manualRosterInput, setManualRosterInput] = useState('');
-  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
-
-  // Custom Test creation state
-  const [showCreateTestModal, setShowCreateTestModal] = useState(false);
-  const [testTitle, setTestTitle] = useState('');
-  const [testCategory, setTestCategory] = useState<TestCategory>('code');
-  const [testLang, setTestLang] = useState<ProgrammingLanguage>('python');
-  const [testTimeLimit, setTestTimeLimit] = useState(120);
-  const [testMinAccuracy, setTestMinAccuracy] = useState(90);
-  const [testDescription, setTestDescription] = useState('');
-  const [testContent, setTestContent] = useState('');
-  const [testAssignedClasses, setTestAssignedClasses] = useState<string[]>([]);
-  const [testAssignedStudents, setTestAssignedStudents] = useState<string[]>([]);
-  const [testStartAt, setTestStartAt] = useState<string>('');
-  const [testEndAt, setTestEndAt] = useState<string>('');
-  const [assignMode, setAssignMode] = useState<'classes' | 'individual'>('classes');
-  const [studentPickerSearch, setStudentPickerSearch] = useState('');
-
-  // Monitoring filter states
+  // Monitoring Filters
   const [selectedMonitorTestId, setSelectedMonitorTestId] = useState<string>('all');
   const [monitorStatusFilter, setMonitorStatusFilter] = useState<'all' | 'completed' | 'not-attempted'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Modals for Leaderboard & Reports
-  const [selectedLeaderboardTest, setSelectedLeaderboardTest] = useState<TypingTest | null>(null);
-  const [selectedViewReport, setSelectedViewReport] = useState<TestReport | null>(null);
+  // Test Bank & Assignment Creation Modal
+  const [showCreateTestModal, setShowCreateTestModal] = useState(false);
+  const [showAssignTestModal, setShowAssignTestModal] = useState<TypingTest | null>(null);
+  const [testTitle, setTestTitle] = useState('');
+  const [testCategory, setTestCategory] = useState<TestCategory>('code');
+  const [testLang, setTestLang] = useState<ProgrammingLanguage>('python');
+  const [testDifficulty, setTestDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
+  const [testTimeLimit, setTestTimeLimit] = useState(120);
+  const [testMinAccuracy, setTestMinAccuracy] = useState(90);
+  const [testDescription, setTestDescription] = useState('');
+  const [testContent, setTestContent] = useState('');
+  const [testBankSearch, setTestBankSearch] = useState('');
 
-  // Class creation
-  const handleCreateClass = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newClassName.trim()) return;
-    createClass(newClassName, newClassDesc);
-    setNewClassName('');
-    setNewClassDesc('');
-    setShowCreateClassModal(false);
-  };
+  // Assignment Scheduling Dialog
+  const [assignTargetClassIds, setAssignTargetClassIds] = useState<string[]>([]);
+  const [assignStartAt, setAssignStartAt] = useState('');
+  const [assignEndAt, setAssignEndAt] = useState('');
+  const [assignDuration, setAssignDuration] = useState(120);
 
-  // Add students to class
-  const handleAddStudentsSubmit = () => {
-    if (!selectedClassForStudents) return;
+  // Student Management & Excel Import
+  const [studentSearch, setStudentSearch] = useState('');
+  const [studentClassFilter, setStudentClassFilter] = useState('all');
+  const [showAddStudentModal, setShowAddStudentModal] = useState(false);
+  const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+  const [newRollNo, setNewRollNo] = useState('');
+  const [newName, setNewName] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newClassId, setNewClassId] = useState(classes[0]?.id || '');
+  const [newPassword, setNewPassword] = useState('1234');
 
-    let toAddIds = [...selectedStudentIds];
+  // Excel Bulk Import Modal
+  const [showExcelImportModal, setShowExcelImportModal] = useState(false);
+  const [parsedRows, setParsedRows] = useState<ParsedStudentRow[]>([]);
+  const [isParsingExcel, setIsParsingExcel] = useState(false);
+  const [importSuccessMsg, setImportSuccessMsg] = useState('');
+  const [importErrorMsg, setImportErrorMsg] = useState('');
 
-    if (manualRosterInput.trim()) {
-      const lines = manualRosterInput.split('\n');
-      lines.forEach(line => {
-        const trimmed = line.trim();
-        if (!trimmed) return;
-        const matched = students.find(
-          s =>
-            s.rollNo.toLowerCase() === trimmed.toLowerCase() ||
-            s.name.toLowerCase().includes(trimmed.toLowerCase())
-        );
-        if (matched && !toAddIds.includes(matched.id)) {
-          toAddIds.push(matched.id);
-        }
-      });
-    }
+  // Class Management Modal
+  const [showCreateClassModal, setShowCreateClassModal] = useState(false);
+  const [newClassName, setNewClassName] = useState('');
+  const [newClassDesc, setNewClassDesc] = useState('');
 
-    addStudentsToClass(selectedClassForStudents, toAddIds);
-    setSelectedClassForStudents(null);
-    setSelectedStudentIds([]);
-    setManualRosterInput('');
-  };
-
-  // Custom Test creation with start/end windows and student assignments
-  const handleCreateTestSubmit = (e: React.FormEvent) => {
+  // Handle Save to Test Bank
+  const handleSaveToTestBank = (e: React.FormEvent) => {
     e.preventDefault();
     if (!testTitle.trim() || !testContent.trim()) return;
 
-    // Resolve assigned student IDs
-    let resolvedStudentIds = [...testAssignedStudents];
-    if (assignMode === 'classes' && testAssignedClasses.length > 0) {
-      const classStudents = students
-        .filter(s => s.classId && testAssignedClasses.includes(s.classId))
-        .map(s => s.id);
-      resolvedStudentIds = Array.from(new Set([...resolvedStudentIds, ...classStudents]));
-    }
-
-    const created = createCustomTest({
+    createCustomTest({
       title: testTitle.trim(),
       category: testCategory,
       language: testCategory === 'code' ? testLang : 'none',
+      difficulty: testDifficulty,
       timeLimit: Number(testTimeLimit),
       minAccuracy: Number(testMinAccuracy),
       description: testDescription.trim(),
       content: testContent.trim(),
-      assignedClassIds: testAssignedClasses,
-      assignedStudentIds: resolvedStudentIds,
+      assignedClassIds: [],
+      assignedStudentIds: [],
       isCustomAssignment: true,
-      startAt: testStartAt ? new Date(testStartAt).toISOString() : undefined,
-      endAt: testEndAt ? new Date(testEndAt).toISOString() : undefined,
-      attemptLimit: 1,
-      createdBy: 'trainer'
+      createdBy: currentUser?.id || 'trainer'
     });
-
-    // Automatically generate initial report structure
-    generateTestReport(created.id);
 
     setShowCreateTestModal(false);
     setTestTitle('');
     setTestContent('');
     setTestDescription('');
-    setTestAssignedClasses([]);
-    setTestAssignedStudents([]);
-    setTestStartAt('');
-    setTestEndAt('');
   };
 
-  // Resolve active candidates for monitoring
+  // Handle Assigning a Saved Test to Batches
+  const handleConfirmAssignTest = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!showAssignTestModal) return;
+
+    updateCustomTest(showAssignTestModal.id, {
+      assignedClassIds: assignTargetClassIds,
+      timeLimit: Number(assignDuration),
+      startAt: assignStartAt ? new Date(assignStartAt).toISOString() : undefined,
+      endAt: assignEndAt ? new Date(assignEndAt).toISOString() : undefined
+    });
+
+    generateTestReport(showAssignTestModal.id);
+    setShowAssignTestModal(null);
+    setAssignTargetClassIds([]);
+    setAssignStartAt('');
+    setAssignEndAt('');
+  };
+
+  // Handle Add Single Student
+  const handleAddStudentSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newRollNo.trim() || !newName.trim()) return;
+
+    addStudent({
+      rollNo: newRollNo.trim().toUpperCase(),
+      name: newName.trim(),
+      email: newEmail.trim() || `${newRollNo.trim().toLowerCase()}@aditya.ac.in`,
+      classId: newClassId,
+      batch: 'Batch 2024-28',
+      status: 'active',
+      password: newPassword.trim() || '1234'
+    });
+
+    setShowAddStudentModal(false);
+    setNewRollNo('');
+    setNewName('');
+    setNewEmail('');
+    setNewPassword('1234');
+  };
+
+  // Handle Edit Student
+  const handleEditStudentSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingStudent) return;
+
+    updateStudent(editingStudent.id, {
+      rollNo: editingStudent.rollNo,
+      name: editingStudent.name,
+      email: editingStudent.email,
+      classId: editingStudent.classId,
+      status: editingStudent.status,
+      password: editingStudent.password
+    });
+
+    setEditingStudent(null);
+  };
+
+  // Handle Excel Upload
+  const handleExcelFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsParsingExcel(true);
+    setImportErrorMsg('');
+    setImportSuccessMsg('');
+
+    try {
+      const result = await parseStudentSpreadsheet(file);
+      setParsedRows(result.rows);
+    } catch (err: any) {
+      setImportErrorMsg('Failed to parse Excel file. Please ensure it follows the template.');
+    } finally {
+      setIsParsingExcel(false);
+    }
+  };
+
+  // Commit Parsed Excel Students to Database
+  const handleCommitExcelImport = async () => {
+    const validRows = parsedRows.filter(r => r.isValid);
+    if (validRows.length === 0) return;
+
+    const toImport = validRows.map(r => ({
+      rollNo: r.rollNo,
+      name: r.name,
+      email: r.email,
+      classId: classes[0]?.id || '',
+      batch: r.batch,
+      status: r.status,
+      password: r.password || '1234'
+    }));
+
+    try {
+      await bulkAddStudents(toImport);
+      setImportSuccessMsg(`Successfully imported ${toImport.length} students into the database!`);
+      setTimeout(() => {
+        setShowExcelImportModal(false);
+        setParsedRows([]);
+        setImportSuccessMsg('');
+      }, 1500);
+    } catch (err: any) {
+      setImportErrorMsg(err.message || 'Failed to save imported students.');
+    }
+  };
+
+  // Class Creation
+  const handleCreateClassSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newClassName.trim()) return;
+    createClass(newClassName.trim(), newClassDesc.trim());
+    setShowCreateClassModal(false);
+    setNewClassName('');
+    setNewClassDesc('');
+  };
+
+  // Monitoring Rows
   const activeMonitorTest = tests.find(t => t.id === selectedMonitorTestId);
+  const filteredStudents = useMemo(() => {
+    return students.filter(s => {
+      if (studentClassFilter !== 'all' && s.classId !== studentClassFilter) return false;
+      if (studentSearch.trim()) {
+        const q = studentSearch.toLowerCase();
+        return s.name.toLowerCase().includes(q) || s.rollNo.toLowerCase().includes(q);
+      }
+      return true;
+    });
+  }, [students, studentClassFilter, studentSearch]);
 
-  let targetStudents: Student[] = students;
-  if (activeMonitorTest) {
-    if (activeMonitorTest.assignedStudentIds && activeMonitorTest.assignedStudentIds.length > 0) {
-      targetStudents = students.filter(s => activeMonitorTest.assignedStudentIds?.includes(s.id));
-    } else if (activeMonitorTest.assignedClassIds && activeMonitorTest.assignedClassIds.length > 0) {
-      targetStudents = students.filter(
-        s => s.classId && activeMonitorTest.assignedClassIds.includes(s.classId)
+  const monitoringRows = useMemo(() => {
+    let targetStudents = students;
+    if (activeMonitorTest) {
+      if (activeMonitorTest.assignedClassIds && activeMonitorTest.assignedClassIds.length > 0) {
+        targetStudents = students.filter(
+          s => s.classId && activeMonitorTest.assignedClassIds.includes(s.classId)
+        );
+      }
+    }
+
+    return targetStudents.map(std => {
+      const studentSub = submissions.find(
+        s =>
+          (selectedMonitorTestId === 'all' || s.testId === selectedMonitorTestId) &&
+          (s.studentId === std.id ||
+            s.rollNo?.toUpperCase() === std.rollNo.toUpperCase() ||
+            s.studentUsername?.toUpperCase() === std.rollNo.toUpperCase())
       );
-    }
-  }
+      return {
+        student: std,
+        status: studentSub ? ('completed' as const) : ('not-attempted' as const),
+        submission: studentSub
+      };
+    });
+  }, [students, activeMonitorTest, submissions, selectedMonitorTestId]);
 
-  // Compile monitoring rows
-  const monitoringRows = targetStudents.map(std => {
-    const studentSub = submissions.find(
-      s =>
-        (selectedMonitorTestId === 'all' || s.testId === selectedMonitorTestId) &&
-        (s.studentId === std.id || s.rollNo.toUpperCase() === std.rollNo.toUpperCase())
-    );
-
-    const isCompleted = Boolean(studentSub);
-    const status: 'completed' | 'not-attempted' = isCompleted ? 'completed' : 'not-attempted';
-
-    return {
-      student: std,
-      status,
-      submission: studentSub
-    };
-  });
-
-  // Filter monitoring rows
-  const filteredMonitoringRows = monitoringRows.filter(row => {
-    if (monitorStatusFilter !== 'all' && row.status !== monitorStatusFilter) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const match =
-        row.student.name.toLowerCase().includes(q) ||
-        row.student.rollNo.toLowerCase().includes(q) ||
-        (row.submission && row.submission.testTitle.toLowerCase().includes(q));
-      if (!match) return false;
-    }
-    return true;
-  });
-
-  const totalAssignedCount = targetStudents.length;
-  const totalCompletedCount = monitoringRows.filter(r => r.status === 'completed').length;
-  const totalNotAttemptedCount = totalAssignedCount - totalCompletedCount;
+  const filteredMonitoringRows = useMemo(() => {
+    return monitoringRows.filter(row => {
+      if (monitorStatusFilter !== 'all' && row.status !== monitorStatusFilter) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        return (
+          row.student.name.toLowerCase().includes(q) ||
+          row.student.rollNo.toLowerCase().includes(q) ||
+          (row.submission && row.submission.testTitle?.toLowerCase().includes(q))
+        );
+      }
+      return true;
+    });
+  }, [monitoringRows, monitorStatusFilter, searchQuery]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
       {/* Dashboard Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl">
-        <div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
+        <div className="z-10">
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
-              Proctor & Trainer Command
+            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+              Department of Technical Training
             </span>
-            <span className="text-xs text-slate-400 font-mono">Real-time Supervision Mode</span>
+            <span className="text-xs text-slate-400 font-mono">DOTT Aditya University</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-100 mt-2">Classroom & Testing Hub</h1>
+          <h1 className="text-2xl sm:text-3xl font-black text-slate-100 mt-2">Faculty Examination Portal</h1>
           <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-            Create scheduled custom tests, enforce single-attempt windows, monitor real-time candidate scores, and export institutional assessment reports.
+            Create test banks, assign timed assessments on-demand in IST, import students via Excel, and monitor candidate speed metrics in real-time.
           </p>
         </div>
 
-        {/* Action button pills */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2.5 z-10">
           <button
-            onClick={() => setShowCreateClassModal(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all"
+            onClick={() => setShowExcelImportModal(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 transition-all cursor-pointer shadow-sm"
           >
-            <Plus className="w-4 h-4 text-cyan-400" />
-            <span>New Class</span>
+            <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+            <span>Excel Student Import</span>
           </button>
 
           <button
             onClick={() => setShowCreateTestModal(true)}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition-all shadow-md shadow-cyan-500/10"
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-all shadow-md shadow-emerald-500/20 cursor-pointer"
           >
-            <Sparkles className="w-4 h-4" />
-            <span>Create Custom Test</span>
+            <Plus className="w-4 h-4" />
+            <span>Create Test (Saved Bank)</span>
           </button>
         </div>
+
+        <div className="absolute -right-16 -top-16 w-60 h-60 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
       </div>
 
       {/* Main Tabs Navigation */}
       <div className="flex border-b border-slate-800 gap-6 text-sm font-semibold overflow-x-auto">
         <button
           onClick={() => setActiveTab('monitoring')}
-          className={`pb-3 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all ${
+          className={`pb-3 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all cursor-pointer ${
             activeTab === 'monitoring'
-              ? 'border-cyan-400 text-cyan-400'
+              ? 'border-emerald-400 text-emerald-400'
               : 'border-transparent text-slate-400 hover:text-slate-200'
           }`}
         >
           <UserCheck className="w-4 h-4" />
-          <span>Test Monitoring & Results</span>
+          <span>Live Examination Monitoring</span>
         </button>
 
         <button
-          onClick={() => setActiveTab('tests')}
-          className={`pb-3 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all ${
-            activeTab === 'tests'
-              ? 'border-cyan-400 text-cyan-400'
+          onClick={() => setActiveTab('testbank')}
+          className={`pb-3 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all cursor-pointer ${
+            activeTab === 'testbank'
+              ? 'border-emerald-400 text-emerald-400'
               : 'border-transparent text-slate-400 hover:text-slate-200'
           }`}
         >
           <Code2 className="w-4 h-4" />
-          <span>Custom Tests & Bank ({tests.length})</span>
+          <span>Saved Test Bank ({tests.length})</span>
         </button>
 
         <button
-          onClick={() => setActiveTab('reports')}
-          className={`pb-3 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all ${
-            activeTab === 'reports'
-              ? 'border-cyan-400 text-cyan-400'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <FileText className="w-4 h-4" />
-          <span>Assessment Reports ({reports.length})</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('classes')}
-          className={`pb-3 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all ${
-            activeTab === 'classes'
-              ? 'border-cyan-400 text-cyan-400'
+          onClick={() => setActiveTab('students')}
+          className={`pb-3 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all cursor-pointer ${
+            activeTab === 'students'
+              ? 'border-emerald-400 text-emerald-400'
               : 'border-transparent text-slate-400 hover:text-slate-200'
           }`}
         >
           <Users className="w-4 h-4" />
-          <span>Cohorts & Rosters ({classes.length})</span>
+          <span>Students & Excel CRUD ({students.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('classes')}
+          className={`pb-3 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all cursor-pointer ${
+            activeTab === 'classes'
+              ? 'border-emerald-400 text-emerald-400'
+              : 'border-transparent text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <BookOpen className="w-4 h-4" />
+          <span>Classes ({classes.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('reports')}
+          className={`pb-3 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all cursor-pointer ${
+            activeTab === 'reports'
+              ? 'border-emerald-400 text-emerald-400'
+              : 'border-transparent text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <FileText className="w-4 h-4" />
+          <span>Submissions & Reports ({submissions.length})</span>
         </button>
 
         <button
           onClick={() => setActiveTab('academy')}
-          className={`pb-3 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all ${
+          className={`pb-3 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all cursor-pointer ${
             activeTab === 'academy'
-              ? 'border-amber-400 text-amber-400 font-bold'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
+              ? 'border-amber-400 text-amber-400'
+              : 'border-transparent text-amber-400/80 hover:text-amber-300'
           }`}
         >
           <GraduationCap className="w-4 h-4 text-amber-400" />
-          <span>Typing Academy Curriculum</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('certificates')}
-          className={`pb-3 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all ${
-            activeTab === 'certificates'
-              ? 'border-indigo-400 text-indigo-400 font-bold'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Award className="w-4 h-4 text-indigo-400" />
-          <span>Certificates & Credentials ({certificates.length})</span>
+          <span>Academy Assignments</span>
         </button>
       </div>
 
-      {/* TAB 1: TEST MONITORING & RESULTS */}
+      {/* TAB 1: LIVE EXAMINATION MONITORING */}
       {activeTab === 'monitoring' && (
         <div className="space-y-6">
-          {/* Top Metrics Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-center justify-between">
-              <div>
-                <div className="text-[11px] font-mono text-slate-400 uppercase">Assigned Candidates</div>
-                <div className="text-3xl font-black font-mono text-slate-100 mt-1">
-                  {totalAssignedCount}
-                </div>
-                <div className="text-xs text-slate-500 mt-0.5">Enrolled for active assessment</div>
-              </div>
-              <Users className="w-8 h-8 text-cyan-500/40" />
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-sm">
+              <div className="text-xs font-mono text-slate-400 uppercase">Assigned Candidates</div>
+              <div className="text-3xl font-black text-slate-100 mt-1">{monitoringRows.length}</div>
             </div>
-
-            <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-center justify-between">
-              <div>
-                <div className="text-[11px] font-mono text-slate-400 uppercase">Completed Tests</div>
-                <div className="text-3xl font-black font-mono text-emerald-400 mt-1">
-                  {totalCompletedCount}
-                </div>
-                <div className="text-xs text-emerald-500/80 mt-0.5">
-                  {totalAssignedCount > 0 ? Math.round((totalCompletedCount / totalAssignedCount) * 100) : 0}% Turnout
-                </div>
+            <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-sm">
+              <div className="text-xs font-mono text-emerald-400 uppercase">Completed Attempts</div>
+              <div className="text-3xl font-black text-emerald-400 mt-1">
+                {monitoringRows.filter(r => r.status === 'completed').length}
               </div>
-              <CheckCircle2 className="w-8 h-8 text-emerald-500/40" />
             </div>
-
-            <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-center justify-between">
-              <div>
-                <div className="text-[11px] font-mono text-slate-400 uppercase">Not Attempted</div>
-                <div className="text-3xl font-black font-mono text-amber-400 mt-1">
-                  {totalNotAttemptedCount}
-                </div>
-                <div className="text-xs text-amber-500/80 mt-0.5">Awaiting candidate submission</div>
+            <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-sm">
+              <div className="text-xs font-mono text-amber-400 uppercase">Pending Submissions</div>
+              <div className="text-3xl font-black text-amber-400 mt-1">
+                {monitoringRows.filter(r => r.status === 'not-attempted').length}
               </div>
-              <Clock className="w-8 h-8 text-amber-500/40" />
+            </div>
+            <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-sm">
+              <div className="text-xs font-mono text-emerald-400 uppercase">Average Cohort WPM</div>
+              <div className="text-3xl font-black text-emerald-400 mt-1">
+                {submissions.length > 0
+                  ? Math.round(submissions.reduce((a, b) => a + b.netWpm, 0) / submissions.length)
+                  : 0}
+              </div>
             </div>
           </div>
 
-          {/* Monitoring Controls Bar */}
-          <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-wrap items-center justify-between gap-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <div>
-                <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Filter Test</label>
-                <select
-                  value={selectedMonitorTestId}
-                  onChange={e => setSelectedMonitorTestId(e.target.value)}
-                  className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500/60 max-w-[240px]"
-                >
-                  <option value="all">All Assessments Combined</option>
-                  {tests.map(t => (
-                    <option key={t.id} value={t.id}>
-                      {t.title} {t.isCustomAssignment ? '(Custom)' : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
+          {/* Monitoring Controls */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+              <select
+                value={selectedMonitorTestId}
+                onChange={e => setSelectedMonitorTestId(e.target.value)}
+                className="bg-slate-950 border border-slate-800 text-xs text-slate-200 rounded-xl px-3 py-2 font-mono focus:outline-none focus:border-emerald-500"
+              >
+                <option value="all">All Assessments</option>
+                {tests.map(t => (
+                  <option key={t.id} value={t.id}>
+                    {t.title} ({t.category})
+                  </option>
+                ))}
+              </select>
 
-              <div>
-                <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Status</label>
-                <select
-                  value={monitorStatusFilter}
-                  onChange={e => setMonitorStatusFilter(e.target.value as any)}
-                  className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500/60"
+              <div className="flex rounded-xl bg-slate-950 border border-slate-800 p-1 text-xs">
+                <button
+                  onClick={() => setMonitorStatusFilter('all')}
+                  className={`px-3 py-1 rounded-lg font-semibold transition-colors cursor-pointer ${
+                    monitorStatusFilter === 'all'
+                      ? 'bg-emerald-500/20 text-emerald-300'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
                 >
-                  <option value="all">All Statuses</option>
-                  <option value="completed">Completed Only</option>
-                  <option value="not-attempted">Not Attempted Only</option>
-                </select>
-              </div>
-
-              <div className="relative pt-4">
-                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-7" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="Search student or roll no..."
-                  className="bg-slate-950 border border-slate-800 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500/60 w-52"
-                />
+                  All
+                </button>
+                <button
+                  onClick={() => setMonitorStatusFilter('completed')}
+                  className={`px-3 py-1 rounded-lg font-semibold transition-colors cursor-pointer ${
+                    monitorStatusFilter === 'completed'
+                      ? 'bg-emerald-500/20 text-emerald-300'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Completed
+                </button>
+                <button
+                  onClick={() => setMonitorStatusFilter('not-attempted')}
+                  className={`px-3 py-1 rounded-lg font-semibold transition-colors cursor-pointer ${
+                    monitorStatusFilter === 'not-attempted'
+                      ? 'bg-emerald-500/20 text-emerald-300'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Pending
+                </button>
               </div>
             </div>
 
-            {activeMonitorTest && (
-              <div className="flex items-center gap-2 pt-4">
-                <button
-                  onClick={() => setSelectedLeaderboardTest(activeMonitorTest)}
-                  className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/40 flex items-center gap-1.5 transition-colors"
-                >
-                  <Trophy className="w-3.5 h-3.5" />
-                  <span>View Leaderboard</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    const rep = generateTestReport(activeMonitorTest.id);
-                    setSelectedViewReport(rep);
-                  }}
-                  className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 border border-cyan-500/40 flex items-center gap-1.5 transition-colors"
-                >
-                  <FileText className="w-3.5 h-3.5" />
-                  <span>Generate Report</span>
-                </button>
-              </div>
-            )}
+            <div className="relative w-full sm:w-64">
+              <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search candidate or roll..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+              />
+            </div>
           </div>
 
-          {/* Student Performance Table */}
+          {/* Candidate Monitoring Table */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-            <div className="overflow-x-auto max-h-[600px]">
+            <div className="overflow-x-auto">
               <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-950/80 text-slate-400 font-mono uppercase text-[10px] tracking-wider border-b border-slate-800 sticky top-0 z-10 backdrop-blur">
+                <thead className="bg-slate-950/80 text-slate-400 font-mono uppercase text-[10px] tracking-wider border-b border-slate-800">
                   <tr>
                     <th className="py-3 px-4">Roll Number</th>
                     <th className="py-3 px-4">Candidate Name</th>
-                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4">Class</th>
                     <th className="py-3 px-4 text-right">Net WPM</th>
-                    <th className="py-3 px-4 text-right">Raw WPM</th>
                     <th className="py-3 px-4 text-right">Accuracy</th>
-                    <th className="py-3 px-4 text-right">Errors</th>
-                    <th className="py-3 px-4 text-right">Duration</th>
-                    <th className="py-3 px-4 text-right">Attempt Time</th>
-                    <th className="py-3 px-4 text-center">Proctor Flags</th>
-                    <th className="py-3 px-4 text-center">Action</th>
+                    <th className="py-3 px-4 text-right">Submitted At (IST)</th>
+                    <th className="py-3 px-4 text-center">Status</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 font-sans">
-                  {filteredMonitoringRows.map(row => {
-                    const sub = row.submission;
-
-                    return (
-                      <tr key={row.student.id} className="hover:bg-slate-800/40 transition-colors">
-                        <td className="py-3 px-4 font-mono font-bold text-cyan-400">
-                          {row.student.rollNo}
-                        </td>
-
-                        <td className="py-3 px-4 font-bold uppercase text-slate-100">
-                          {row.student.name}
-                        </td>
-
-                        <td className="py-3 px-4">
-                          {row.status === 'completed' ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                              <CheckCircle2 className="w-3 h-3" />
-                              <span>Completed</span>
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-400">
-                              <Clock className="w-3 h-3" />
-                              <span>Not Attempted</span>
-                            </span>
-                          )}
-                        </td>
-
-                        <td className="py-3 px-4 text-right font-mono font-bold text-slate-100 text-sm">
-                          {sub ? sub.netWpm : '-'}
-                        </td>
-
-                        <td className="py-3 px-4 text-right font-mono text-slate-400">
-                          {sub ? sub.rawWpm : '-'}
-                        </td>
-
-                        <td className="py-3 px-4 text-right font-mono text-slate-300">
-                          {sub ? `${sub.accuracy}%` : '-'}
-                        </td>
-
-                        <td className="py-3 px-4 text-right font-mono text-slate-400">
-                          {sub ? sub.errors : '-'}
-                        </td>
-
-                        <td className="py-3 px-4 text-right font-mono text-slate-400">
-                          {sub ? `${sub.timeTaken}s` : '-'}
-                        </td>
-
-                        <td className="py-3 px-4 text-right font-mono text-slate-500 text-[11px]">
-                          {sub ? sub.timestamp : '-'}
-                        </td>
-
-                        <td className="py-3 px-4 text-center font-mono">
-                          {sub && sub.proctorBlurFlags > 0 ? (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/30">
-                              {sub.proctorBlurFlags} blur
-                            </span>
-                          ) : (
-                            <span className="text-slate-600 text-[10px]">0</span>
-                          )}
-                        </td>
-
-                        <td className="py-3 px-4 text-center">
-                          {sub && activeMonitorTest && (
-                            <button
-                              onClick={() => {
-                                if (confirm(`Reset test attempt for ${row.student.name}? This will allow the student to retake the test once.`)) {
-                                  resetStudentAttempt(activeMonitorTest.id, row.student.id);
-                                }
-                              }}
-                              className="px-2 py-1 rounded text-[10px] font-semibold text-slate-400 hover:text-amber-300 hover:bg-amber-500/10 transition-colors"
-                              title="Reset student's attempt to allow retake"
-                            >
-                              Reset
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {filteredMonitoringRows.map(row => (
+                    <tr key={row.student.id} className="hover:bg-slate-800/40 transition-colors">
+                      <td className="py-3 px-4 font-mono font-bold text-emerald-400">
+                        {row.student.rollNo}
+                      </td>
+                      <td className="py-3 px-4 font-semibold text-slate-200">{row.student.name}</td>
+                      <td className="py-3 px-4 font-mono text-slate-400">
+                        {classes.find(c => c.id === row.student.classId)?.name || 'CSE Alpha'}
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono font-bold text-slate-100">
+                        {row.submission ? `${row.submission.netWpm} WPM` : '—'}
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono font-bold text-amber-400">
+                        {row.submission ? `${row.submission.accuracy}%` : '—'}
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono text-slate-400 text-[11px]">
+                        {row.submission ? formatISTDateTime(row.submission.timestamp) : 'Not Started'}
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        {row.status === 'completed' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                            <CheckCircle2 className="w-3 h-3" /> Submitted
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700">
+                            <Clock className="w-3 h-3" /> Pending
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        {row.submission && (
+                          <button
+                            onClick={() =>
+                              resetStudentAttempt(
+                                row.submission!.testId,
+                                row.student.id,
+                                'Reset requested by faculty mentor'
+                              )
+                            }
+                            title="Reset attempt for re-take"
+                            className="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[11px] font-mono transition-colors cursor-pointer"
+                          >
+                            Reset Attempt
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -562,125 +619,95 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
         </div>
       )}
 
-      {/* TAB 2: TEST BANK & CUSTOM ASSIGNMENTS */}
-      {activeTab === 'tests' && (
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-900 border border-slate-800 p-4 rounded-2xl">
-            <div className="text-xs text-slate-400">
-              Manage pre-built modules and scheduled custom assessments.
+      {/* TAB 2: SAVED TEST BANK & ON-DEMAND ASSIGNMENT */}
+      {activeTab === 'testbank' && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-900 border border-slate-800 p-5 rounded-3xl shadow-sm">
+            <div>
+              <h2 className="text-lg font-bold text-slate-100">Faculty Saved Test Bank</h2>
+              <p className="text-xs text-slate-400">
+                Create and stockpile custom typing exams in advance. Whenever needed, click "Assign to Students" to launch with custom IST start and due times.
+              </p>
             </div>
-            <button
-              onClick={() => setShowCreateTestModal(true)}
-              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition-all flex items-center gap-1.5"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>Create Custom Test</span>
-            </button>
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowCreateTestModal(true)}
+                className="px-4 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Create New Test</span>
+              </button>
+            </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
+          {/* Test Bank Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {tests.map(test => {
-              const testSubmissions = submissions.filter(s => s.testId === test.id);
-              const now = new Date();
-              const isScheduled = test.startAt && new Date(test.startAt) > now;
-              const isExpired = test.endAt && new Date(test.endAt) < now;
-              const isActive = (!test.startAt || new Date(test.startAt) <= now) && (!test.endAt || new Date(test.endAt) >= now);
+              const assignedClassNames = (test.assignedClassIds || [])
+                .map(cId => classes.find(c => c.id === cId)?.name)
+                .filter(Boolean);
+
+              const isAssigned = (test.assignedClassIds && test.assignedClassIds.length > 0) || (test.assignedStudentIds && test.assignedStudentIds.length > 0);
 
               return (
                 <div
                   key={test.id}
-                  className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 flex flex-col justify-between shadow-lg"
+                  className="bg-slate-900 border border-slate-800 hover:border-emerald-500/40 rounded-3xl p-6 flex flex-col justify-between gap-4 shadow-xl transition-all"
                 >
-                  <div className="space-y-2">
+                  <div className="space-y-2.5">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-mono uppercase font-bold tracking-wider bg-slate-800 text-slate-300">
-                          {test.category}
-                        </span>
-                        {test.isCustomAssignment && (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
-                            Custom
-                          </span>
-                        )}
-                        {test.language && test.language !== 'none' && (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-cyan-950 text-cyan-300 border border-cyan-800">
-                            {test.language}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-1.5 text-xs font-mono">
-                        {isScheduled && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                            Scheduled
-                          </span>
-                        )}
-                        {isActive && test.isCustomAssignment && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                            Active Window
-                          </span>
-                        )}
-                        {isExpired && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-800 text-slate-400">
-                            Expired
-                          </span>
-                        )}
-                      </div>
+                      <span className="px-2.5 py-0.5 rounded text-[10px] font-mono uppercase font-bold tracking-wider bg-slate-800 text-slate-300">
+                        {test.category}
+                      </span>
+                      <span className="text-xs font-mono text-slate-400">{test.timeLimit}s limit</span>
                     </div>
 
                     <h3 className="text-base font-bold text-slate-100">{test.title}</h3>
-                    <p className="text-xs text-slate-400 line-clamp-2">{test.description || test.content}</p>
+                    <p className="text-xs text-slate-400 line-clamp-2">
+                      {test.description || 'Pre-saved institutional examination passage.'}
+                    </p>
 
-                    {/* Window times if present */}
-                    {(test.startAt || test.endAt) && (
-                      <div className="text-[11px] font-mono text-slate-400 bg-slate-950/60 p-2 rounded-lg border border-slate-800/80 space-y-0.5">
-                        {test.startAt && <div>Start: <span className="text-slate-200">{test.startAt.replace('T', ' ')}</span></div>}
-                        {test.endAt && <div>End: <span className="text-slate-200">{test.endAt.replace('T', ' ')}</span></div>}
+                    <div className="p-2.5 bg-slate-950 rounded-xl border border-slate-800 text-[11px] font-mono text-slate-400 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span>Min Accuracy:</span>
+                        <span className="text-emerald-400 font-bold">{test.minAccuracy}%</span>
                       </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-3 pt-3 border-t border-slate-800">
-                    <div className="flex items-center justify-between text-xs font-mono text-slate-400">
-                      <span>{test.timeLimit}s • Target {test.minAccuracy}%</span>
-                      <span>{testSubmissions.length} Submissions</span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setSelectedLeaderboardTest(test)}
-                        className="flex-1 py-2 rounded-xl text-xs font-bold bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-500/30 flex items-center justify-center gap-1.5 transition-colors"
-                      >
-                        <Trophy className="w-3.5 h-3.5" />
-                        <span>Leaderboard</span>
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          const rep = generateTestReport(test.id);
-                          setSelectedViewReport(rep);
-                        }}
-                        className="flex-1 py-2 rounded-xl text-xs font-bold bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25 border border-cyan-500/30 flex items-center justify-center gap-1.5 transition-colors"
-                      >
-                        <FileText className="w-3.5 h-3.5" />
-                        <span>Report</span>
-                      </button>
-
-                      {test.isCustomAssignment && (
-                        <button
-                          onClick={() => {
-                            if (confirm(`Delete custom test "${test.title}"?`)) {
-                              deleteTest(test.id);
-                            }
-                          }}
-                          className="p-2 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                          title="Delete test"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
+                      <div className="flex items-center justify-between">
+                        <span>Assignment Status:</span>
+                        <span className={`font-bold ${isAssigned ? 'text-emerald-400' : 'text-amber-400'}`}>
+                          {isAssigned ? `Active (${assignedClassNames.length || 1} Batch)` : 'Saved in Bank (Unassigned)'}
+                        </span>
+                      </div>
+                      {test.endAt && (
+                        <div className="text-[10px] text-amber-300">
+                          Deadline (IST): {formatISTDateTime(test.endAt)}
+                        </div>
                       )}
                     </div>
                   </div>
+
+                  <div className="flex items-center gap-2 pt-3 border-t border-slate-800">
+                    <button
+                      onClick={() => {
+                        setShowAssignTestModal(test);
+                        setAssignTargetClassIds(test.assignedClassIds || []);
+                        setAssignDuration(test.timeLimit || 120);
+                      }}
+                      className="flex-1 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-all shadow flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>{isAssigned ? 'Re-Assign / Edit' : 'Assign to Batches'}</span>
+                    </button>
+
+                    <button
+                      onClick={() => deleteTest(test.id)}
+                      title="Delete Test"
+                      className="p-2.5 rounded-xl bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors border border-slate-700 cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -688,171 +715,159 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
         </div>
       )}
 
-      {/* TAB 3: ASSESSMENT REPORTS */}
-      {activeTab === 'reports' && (
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-900 border border-slate-800 p-4 rounded-2xl">
+      {/* TAB 3: STUDENTS & EXCEL CRUD */}
+      {activeTab === 'students' && (
+        <div className="space-y-6">
+          <div className="bg-slate-900 border border-slate-800 p-5 rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
             <div>
-              <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
-                <FileText className="w-4 h-4 text-cyan-400" />
-                Institutional Performance Reports
-              </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Saved examination reports with full rankings, accuracy scores, and error breakdowns.
+              <h2 className="text-lg font-bold text-slate-100">Student Directory & Database Management</h2>
+              <p className="text-xs text-slate-400">
+                Manage candidate enrollments, passwords, and batch assignments. Upload or download full rosters via Excel (.xlsx).
               </p>
             </div>
 
-            <button
-              onClick={() => {
-                if (tests.length > 0) {
-                  const rep = generateTestReport(tests[0].id);
-                  setSelectedViewReport(rep);
-                }
-              }}
-              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition-all flex items-center gap-1.5"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>Generate Latest Report</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                onClick={() => downloadStudentImportTemplate('xlsx')}
+                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Download Excel Template</span>
+              </button>
+
+              <button
+                onClick={() => exportStudentsToExcel(students)}
+                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5 text-amber-400" />
+                <span>Export Students (.xlsx)</span>
+              </button>
+
+              <button
+                onClick={() => setShowAddStudentModal(true)}
+                className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-md"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Student</span>
+              </button>
+            </div>
           </div>
 
-          {reports.length === 0 ? (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center space-y-3">
-              <FileText className="w-10 h-10 mx-auto text-slate-700" />
-              <p className="text-sm font-semibold text-slate-300">No Assessment Reports Generated Yet</p>
-              <p className="text-xs text-slate-500 max-w-md mx-auto">
-                Reports are automatically compiled when custom tests conclude, or you can generate a report at any time.
-              </p>
+          {/* Student Filter Bar */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              <select
+                value={studentClassFilter}
+                onChange={e => setStudentClassFilter(e.target.value)}
+                className="bg-slate-950 border border-slate-800 text-xs text-slate-200 rounded-xl px-3 py-2 font-mono focus:outline-none focus:border-emerald-500"
+              >
+                <option value="all">All Classes & Sections</option>
+                {classes.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
             </div>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              {reports.map(rep => (
-                <div
-                  key={rep.id}
-                  className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 flex flex-col justify-between shadow-lg"
-                >
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-mono uppercase font-bold tracking-wider bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
-                        Assessment Report
-                      </span>
-                      <span className="text-[11px] font-mono text-slate-400">{rep.generatedAt}</span>
-                    </div>
 
-                    <h3 className="text-base font-bold text-slate-100">{rep.testTitle}</h3>
-
-                    {/* Stats pills */}
-                    <div className="grid grid-cols-3 gap-2 pt-2 text-xs font-mono">
-                      <div className="bg-slate-950/60 p-2 rounded-xl border border-slate-800/60">
-                        <div className="text-[10px] text-slate-500">TURNOUT</div>
-                        <div className="text-base font-bold text-slate-200 mt-0.5">
-                          {rep.totalCompleted}/{rep.totalAssigned}
-                        </div>
-                      </div>
-
-                      <div className="bg-slate-950/60 p-2 rounded-xl border border-slate-800/60">
-                        <div className="text-[10px] text-slate-500">AVG SPEED</div>
-                        <div className="text-base font-bold text-cyan-400 mt-0.5">
-                          {rep.averageWpm} WPM
-                        </div>
-                      </div>
-
-                      <div className="bg-slate-950/60 p-2 rounded-xl border border-slate-800/60">
-                        <div className="text-[10px] text-slate-500">ACCURACY</div>
-                        <div className="text-base font-bold text-emerald-400 mt-0.5">
-                          {rep.averageAccuracy}%
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 pt-2 border-t border-slate-800">
-                    <button
-                      onClick={() => setSelectedViewReport(rep)}
-                      className="flex-1 py-2 rounded-xl text-xs font-bold bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 border border-cyan-500/40 flex items-center justify-center gap-1.5 transition-colors"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>View Report</span>
-                    </button>
-
-                    <button
-                      onClick={() => downloadReportCSV(rep)}
-                      className="flex-1 py-2 rounded-xl text-xs font-bold bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/40 flex items-center justify-center gap-1.5 transition-colors"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      <span>Export CSV</span>
-                    </button>
-
-                    <button
-                      onClick={() => deleteReport(rep.id)}
-                      className="p-2 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                      title="Delete saved report"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
+            <div className="relative w-full sm:w-64">
+              <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search roll number or name..."
+                value={studentSearch}
+                onChange={e => setStudentSearch(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+              />
             </div>
-          )}
+          </div>
+
+          {/* Student Table */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-300">
+                <thead className="bg-slate-950/80 text-slate-400 font-mono uppercase text-[10px] tracking-wider border-b border-slate-800">
+                  <tr>
+                    <th className="py-3 px-4">Roll Number</th>
+                    <th className="py-3 px-4">Full Name</th>
+                    <th className="py-3 px-4">Email</th>
+                    <th className="py-3 px-4">Class</th>
+                    <th className="py-3 px-4">Password</th>
+                    <th className="py-3 px-4 text-center">Status</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 font-sans">
+                  {filteredStudents.map(std => (
+                    <tr key={std.id} className="hover:bg-slate-800/40 transition-colors">
+                      <td className="py-3 px-4 font-mono font-bold text-emerald-400">{std.rollNo}</td>
+                      <td className="py-3 px-4 font-semibold text-slate-200">{std.name}</td>
+                      <td className="py-3 px-4 font-mono text-slate-400">{std.email || '—'}</td>
+                      <td className="py-3 px-4 font-mono text-slate-300">
+                        {classes.find(c => c.id === std.classId)?.name || 'CSE Alpha'}
+                      </td>
+                      <td className="py-3 px-4 font-mono text-slate-400">{std.password || '1234'}</td>
+                      <td className="py-3 px-4 text-center">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                          {std.status || 'active'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right space-x-2">
+                        <button
+                          onClick={() => setEditingStudent(std)}
+                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-emerald-400 transition-colors cursor-pointer"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => deleteStudent(std.id)}
+                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* TAB 4: CLASSES & ROSTERS */}
+      {/* TAB 4: CLASSES */}
       {activeTab === 'classes' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between bg-slate-900 border border-slate-800 p-4 rounded-2xl">
-            <div className="text-xs text-slate-400">
-              Organize student batches into classrooms and assign modular curriculum.
+        <div className="space-y-6">
+          <div className="flex items-center justify-between bg-slate-900 border border-slate-800 p-5 rounded-3xl shadow-sm">
+            <div>
+              <h2 className="text-lg font-bold text-slate-100">Academic Cohorts & Sections</h2>
+              <p className="text-xs text-slate-400">Manage class sections and assigned mentor faculty.</p>
             </div>
             <button
               onClick={() => setShowCreateClassModal(true)}
-              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition-all flex items-center gap-1.5"
+              className="px-4 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>Create Class</span>
+              <span>Create New Class</span>
             </button>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             {classes.map(cls => {
-              const enrolledStudents = students.filter(s => cls.studentIds.includes(s.id));
-
+              const enrolledStudents = students.filter(s => s.classId === cls.id);
               return (
                 <div
                   key={cls.id}
-                  className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 flex flex-col justify-between shadow-lg"
+                  className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl"
                 >
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-slate-800 text-slate-300">
-                        {cls.id}
-                      </span>
-                      <span className="text-xs font-mono text-cyan-400 font-bold">
-                        {cls.studentIds.length} Enrolled
-                      </span>
-                    </div>
-
-                    <h3 className="text-lg font-bold text-slate-100">{cls.name}</h3>
-                    <p className="text-xs text-slate-400">{cls.description || 'Institutional class cohort.'}</p>
+                  <div className="flex items-center justify-between">
+                    <span className="px-2.5 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                      Active Section
+                    </span>
+                    <span className="text-xs font-mono text-slate-400">{enrolledStudents.length} Students</span>
                   </div>
-
-                  <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
-                    <div className="text-[11px] font-mono text-slate-500">
-                      Created: {cls.createdAt}
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        setSelectedClassForStudents(cls.id);
-                        setSelectedStudentIds(cls.studentIds);
-                      }}
-                      className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors flex items-center gap-1.5"
-                    >
-                      <Users className="w-3.5 h-3.5 text-cyan-400" />
-                      <span>Manage Roster</span>
-                    </button>
-                  </div>
+                  <h3 className="text-lg font-bold text-slate-100">{cls.name}</h3>
+                  <p className="text-xs text-slate-400">{cls.description || 'Department section'}</p>
                 </div>
               );
             })}
@@ -860,275 +875,215 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
         </div>
       )}
 
-      {/* CREATE CUSTOM TEST MODAL (With Scheduling, Windows & Student Assign) */}
+      {/* TAB 5: SUBMISSIONS & REPORTS */}
+      {activeTab === 'reports' && (
+        <div className="space-y-6">
+          <div className="bg-slate-900 border border-slate-800 p-5 rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+            <div>
+              <h2 className="text-lg font-bold text-slate-100">Official Submissions Report Log (IST)</h2>
+              <p className="text-xs text-slate-400">
+                Authoritative examination records with net speed, gross speed, accuracy, and proctoring audit log.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => exportSubmissionsToExcel(submissions)}
+                className="px-4 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Download className="w-4 h-4 text-emerald-400" />
+                <span>Export Submissions (.xlsx)</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Submissions Table */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-300">
+                <thead className="bg-slate-950/80 text-slate-400 font-mono uppercase text-[10px] tracking-wider border-b border-slate-800">
+                  <tr>
+                    <th className="py-3 px-4">Roll Number</th>
+                    <th className="py-3 px-4">Candidate Name</th>
+                    <th className="py-3 px-4">Test Title</th>
+                    <th className="py-3 px-4 text-right">Net WPM</th>
+                    <th className="py-3 px-4 text-right">Accuracy</th>
+                    <th className="py-3 px-4 text-right">Timestamp (IST)</th>
+                    <th className="py-3 px-4 text-center">Result</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 font-sans">
+                  {submissions.map(sub => (
+                    <tr key={sub.id} className="hover:bg-slate-800/40 transition-colors">
+                      <td className="py-3 px-4 font-mono font-bold text-emerald-400">
+                        {sub.rollNo || sub.studentUsername || '—'}
+                      </td>
+                      <td className="py-3 px-4 font-semibold text-slate-200">{sub.studentName || '—'}</td>
+                      <td className="py-3 px-4 text-slate-300">{sub.testTitle}</td>
+                      <td className="py-3 px-4 text-right font-mono font-bold text-emerald-400">
+                        {sub.netWpm} WPM
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono font-bold text-amber-400">
+                        {sub.accuracy}%
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono text-slate-400 text-[11px]">
+                        {formatISTDateTime(sub.timestamp)}
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                          PASSED
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 6: ACADEMY ASSIGNMENTS */}
+      {activeTab === 'academy' && (
+        <TrainerAcademyManagement
+          classes={classes}
+          students={students}
+          trainerId={currentUser?.id || 'trn-1'}
+          onOpenCertificateModal={() => setShowGenCertModal(true)}
+        />
+      )}
+
+      {/* MODAL 1: CREATE TEST BANK ITEM */}
       {showCreateTestModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
-            <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-cyan-400" />
-                <h3 className="text-lg font-bold text-slate-100">Create & Assign Custom Test</h3>
-              </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-2xl w-full shadow-2xl space-y-5 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
+                <Code2 className="w-5 h-5 text-emerald-400" />
+                Create New Test (Saved Test Bank)
+              </h2>
               <button
                 onClick={() => setShowCreateTestModal(false)}
-                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateTestSubmit} className="p-6 space-y-4 overflow-y-auto flex-1 text-xs">
+            <form onSubmit={handleSaveToTestBank} className="space-y-4">
               <div>
-                <label className="block font-semibold text-slate-300 mb-1">Test Title *</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Test Title</label>
                 <input
                   type="text"
                   required
                   value={testTitle}
                   onChange={e => setTestTitle(e.target.value)}
-                  placeholder="e.g. CSE 2nd Year Speed Benchmark Exam"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-slate-100 focus:outline-none focus:border-cyan-500/60"
+                  placeholder="e.g. Python: Hash Map Indexing & Two Sum"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block font-semibold text-slate-300 mb-1">Category</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Category</label>
                   <select
                     value={testCategory}
-                    onChange={e => setTestCategory(e.target.value as any)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none focus:border-cyan-500/60"
+                    onChange={e => setTestCategory(e.target.value as TestCategory)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-emerald-500 font-mono"
                   >
-                    <option value="code">Code Snippet</option>
-                    <option value="story">Story Passage</option>
-                    <option value="standard">Standard Words</option>
+                    <option value="code">Coding Assessment</option>
+                    <option value="story">Contextual Story Passage</option>
+                    <option value="standard">Standard Speed Benchmark</option>
                   </select>
                 </div>
 
-                {testCategory === 'code' ? (
-                  <div>
-                    <label className="block font-semibold text-slate-300 mb-1">Language</label>
-                    <select
-                      value={testLang}
-                      onChange={e => setTestLang(e.target.value as any)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none focus:border-cyan-500/60"
-                    >
-                      <option value="python">Python</option>
-                      <option value="javascript">JavaScript</option>
-                      <option value="java">Java</option>
-                      <option value="cpp">C++</option>
-                    </select>
-                  </div>
-                ) : (
-                  <div>
-                    <label className="block font-semibold text-slate-300 mb-1">Duration (Seconds)</label>
-                    <input
-                      type="number"
-                      min={10}
-                      max={600}
-                      value={testTimeLimit}
-                      onChange={e => setTestTimeLimit(Number(e.target.value))}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none focus:border-cyan-500/60 font-mono"
-                    />
-                  </div>
-                )}
-              </div>
-
-              {testCategory === 'code' && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-semibold text-slate-300 mb-1">Duration (Seconds)</label>
-                    <input
-                      type="number"
-                      min={10}
-                      max={600}
-                      value={testTimeLimit}
-                      onChange={e => setTestTimeLimit(Number(e.target.value))}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none focus:border-cyan-500/60 font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-semibold text-slate-300 mb-1">Target Accuracy (%)</label>
-                    <input
-                      type="number"
-                      min={50}
-                      max={100}
-                      value={testMinAccuracy}
-                      onChange={e => setTestMinAccuracy(Number(e.target.value))}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none focus:border-cyan-500/60 font-mono"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Start and End Window Configuration */}
-              <div className="p-3 bg-slate-950/60 border border-slate-800/80 rounded-2xl space-y-3">
-                <div className="flex items-center gap-1.5 font-semibold text-cyan-400">
-                  <Calendar className="w-4 h-4" />
-                  <span>Availability Window & Access Control</span>
-                </div>
-                <p className="text-[11px] text-slate-400">
-                  The test will remain completely invisible to students before the start time, and automatically locks after the end time. Each student can attempt it only once.
-                </p>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-mono text-slate-400 mb-1">Start Date & Time</label>
-                    <input
-                      type="datetime-local"
-                      value={testStartAt}
-                      onChange={e => setTestStartAt(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 font-mono focus:outline-none focus:border-cyan-500/60"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-mono text-slate-400 mb-1">End Date & Time</label>
-                    <input
-                      type="datetime-local"
-                      value={testEndAt}
-                      onChange={e => setTestEndAt(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 font-mono focus:outline-none focus:border-cyan-500/60"
-                    />
-                  </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Programming Language
+                  </label>
+                  <select
+                    disabled={testCategory !== 'code'}
+                    value={testLang}
+                    onChange={e => setTestLang(e.target.value as ProgrammingLanguage)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-emerald-500 font-mono disabled:opacity-50"
+                  >
+                    <option value="python">Python</option>
+                    <option value="javascript">JavaScript</option>
+                    <option value="java">Java</option>
+                    <option value="cpp">C++</option>
+                    <option value="none">None</option>
+                  </select>
                 </div>
               </div>
 
-              {/* Assigned Students / Classes */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="font-semibold text-slate-300">Assign To:</label>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setAssignMode('classes')}
-                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold ${
-                        assignMode === 'classes'
-                          ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
-                          : 'text-slate-400'
-                      }`}
-                    >
-                      Entire Classes
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setAssignMode('individual')}
-                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold ${
-                        assignMode === 'individual'
-                          ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
-                          : 'text-slate-400'
-                      }`}
-                    >
-                      Selected Students ({testAssignedStudents.length})
-                    </button>
-                  </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Default Time Limit (Seconds)
+                  </label>
+                  <input
+                    type="number"
+                    min={15}
+                    max={600}
+                    value={testTimeLimit}
+                    onChange={e => setTestTimeLimit(Number(e.target.value))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 font-mono focus:outline-none focus:border-emerald-500"
+                  />
                 </div>
 
-                {assignMode === 'classes' ? (
-                  <div className="grid grid-cols-2 gap-2">
-                    {classes.map(c => {
-                      const selected = testAssignedClasses.includes(c.id);
-                      return (
-                        <div
-                          key={c.id}
-                          onClick={() => {
-                            setTestAssignedClasses(prev =>
-                              selected ? prev.filter(id => id !== c.id) : [...prev, c.id]
-                            );
-                          }}
-                          className={`p-2.5 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${
-                            selected
-                              ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-300'
-                              : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                          }`}
-                        >
-                          <span className="font-semibold">{c.name}</span>
-                          {selected && <Check className="w-3.5 h-3.5" />}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="border border-slate-800 rounded-xl p-3 bg-slate-950/80 space-y-2">
-                    <input
-                      type="text"
-                      placeholder="Search students to assign..."
-                      value={studentPickerSearch}
-                      onChange={e => setStudentPickerSearch(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-slate-200 placeholder-slate-500 focus:outline-none"
-                    />
-                    <div className="max-h-36 overflow-y-auto space-y-1">
-                      {students
-                        .filter(
-                          s =>
-                            s.name.toLowerCase().includes(studentPickerSearch.toLowerCase()) ||
-                            s.rollNo.toLowerCase().includes(studentPickerSearch.toLowerCase())
-                        )
-                        .map(s => {
-                          const isAssigned = testAssignedStudents.includes(s.id);
-                          return (
-                            <div
-                              key={s.id}
-                              onClick={() => {
-                                setTestAssignedStudents(prev =>
-                                  isAssigned ? prev.filter(id => id !== s.id) : [...prev, s.id]
-                                );
-                              }}
-                              className={`p-1.5 px-2 rounded-lg cursor-pointer flex items-center justify-between text-[11px] ${
-                                isAssigned
-                                  ? 'bg-cyan-500/15 text-cyan-300 font-bold'
-                                  : 'text-slate-400 hover:bg-slate-900'
-                              }`}
-                            >
-                              <span>
-                                <strong className="text-slate-200">{s.rollNo}</strong> - {s.name}
-                              </span>
-                              {isAssigned && <Check className="w-3 h-3 text-cyan-400" />}
-                            </div>
-                          );
-                        })}
-                    </div>
-                  </div>
-                )}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Minimum Target Accuracy (%)
+                  </label>
+                  <input
+                    type="number"
+                    min={70}
+                    max={100}
+                    value={testMinAccuracy}
+                    onChange={e => setTestMinAccuracy(Number(e.target.value))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 font-mono focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-300 mb-1">
-                  Test Content * (The text or code the student must type)
-                </label>
-                <textarea
-                  required
-                  rows={4}
-                  value={testContent}
-                  onChange={e => setTestContent(e.target.value)}
-                  placeholder="Paste or type the exact text passage or code block here..."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-100 font-mono text-xs focus:outline-none focus:border-cyan-500/60 leading-relaxed"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-300 mb-1">Instructions / Description</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Description</label>
                 <input
                   type="text"
                   value={testDescription}
                   onChange={e => setTestDescription(e.target.value)}
-                  placeholder="Optional brief notes or instructions for candidates..."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-slate-100 focus:outline-none focus:border-cyan-500/60"
+                  placeholder="Objective or algorithm concept summary..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
-              <div className="pt-2 flex items-center justify-end gap-2">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Passage / Code Content
+                </label>
+                <textarea
+                  required
+                  rows={6}
+                  value={testContent}
+                  onChange={e => setTestContent(e.target.value)}
+                  placeholder="Enter the exact passage or code snippet for examinees to type..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-100 font-mono focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
                 <button
                   type="button"
                   onClick={() => setShowCreateTestModal(false)}
-                  className="px-4 py-2 rounded-xl text-slate-400 hover:text-slate-200 bg-slate-800 transition-colors"
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 font-bold text-xs"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl font-bold bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition-all shadow-md shadow-cyan-500/20"
+                  className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-md shadow-emerald-500/20"
                 >
-                  Create & Lock Test
+                  Save to Test Bank
                 </button>
               </div>
             </form>
@@ -1136,55 +1091,425 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
         </div>
       )}
 
-      {/* CREATE CLASS MODAL */}
-      {showCreateClassModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
-            <div className="p-5 border-b border-slate-800 flex items-center justify-between">
-              <h3 className="text-base font-bold text-slate-100">Create New Class Cohort</h3>
+      {/* MODAL 2: ASSIGN TEST TO BATCHES DIALOG */}
+      {showAssignTestModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div>
+                <h2 className="text-lg font-bold text-slate-100">Assign Test to Batches</h2>
+                <p className="text-xs text-emerald-400 font-mono">{showAssignTestModal.title}</p>
+              </div>
               <button
-                onClick={() => setShowCreateClassModal(false)}
-                className="p-1 rounded text-slate-400 hover:text-slate-100"
+                onClick={() => setShowAssignTestModal(null)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-200"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateClass} className="p-5 space-y-4 text-xs">
+            <form onSubmit={handleConfirmAssignTest} className="space-y-4">
               <div>
-                <label className="block font-semibold text-slate-300 mb-1">Class Name *</label>
-                <input
-                  type="text"
-                  required
-                  value={newClassName}
-                  onChange={e => setNewClassName(e.target.value)}
-                  placeholder="e.g. CSE Gamma (2024-28)"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none focus:border-cyan-500/60"
-                />
+                <label className="block text-xs font-semibold text-slate-300 mb-2">
+                  Select Target Classes / Sections
+                </label>
+                <div className="space-y-2 max-h-36 overflow-y-auto p-3 bg-slate-950 rounded-2xl border border-slate-800">
+                  {classes.map(cls => {
+                    const isChecked = assignTargetClassIds.includes(cls.id);
+                    return (
+                      <label
+                        key={cls.id}
+                        className="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer select-none"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {
+                            if (isChecked) {
+                              setAssignTargetClassIds(assignTargetClassIds.filter(id => id !== cls.id));
+                            } else {
+                              setAssignTargetClassIds([...assignTargetClassIds, cls.id]);
+                            }
+                          }}
+                          className="rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-emerald-500"
+                        />
+                        <span>{cls.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 font-mono text-xs">
+                <div>
+                  <label className="block font-sans text-xs font-semibold text-slate-300 mb-1">
+                    Start Window (IST)
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={assignStartAt}
+                    onChange={e => setAssignStartAt(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-sans text-xs font-semibold text-slate-300 mb-1">
+                    Deadline (IST)
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={assignEndAt}
+                    onChange={e => setAssignEndAt(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200"
+                  />
+                </div>
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-300 mb-1">Description</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Test Duration (Seconds per attempt)
+                </label>
                 <input
-                  type="text"
-                  value={newClassDesc}
-                  onChange={e => setNewClassDesc(e.target.value)}
-                  placeholder="e.g. Advanced Data Structures Lab Batch"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none focus:border-cyan-500/60"
+                  type="number"
+                  min={15}
+                  max={600}
+                  value={assignDuration}
+                  onChange={e => setAssignDuration(Number(e.target.value))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-xs text-slate-100 font-mono"
                 />
               </div>
 
-              <div className="pt-2 flex items-center justify-end gap-2">
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setShowCreateClassModal(false)}
-                  className="px-4 py-2 rounded-xl text-slate-400 hover:text-slate-200 bg-slate-800"
+                  onClick={() => setShowAssignTestModal(null)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 font-bold text-xs"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl font-bold bg-cyan-500 hover:bg-cyan-400 text-slate-950"
+                  className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-md shadow-emerald-500/20"
+                >
+                  Confirm & Activate Test
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: EXCEL BULK IMPORT MODAL */}
+      {showExcelImportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-3xl w-full shadow-2xl space-y-5 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
+                <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
+                Bulk Student Import via Excel (.xlsx / .csv)
+              </h2>
+              <button
+                onClick={() => {
+                  setShowExcelImportModal(false);
+                  setParsedRows([]);
+                }}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-xs text-slate-300 flex items-center justify-between">
+                <div>
+                  <strong>Need the format?</strong> Download the sample Excel template with pre-filled headers and sample rows.
+                </div>
+                <button
+                  onClick={() => downloadStudentImportTemplate('xlsx')}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-colors shrink-0 shadow"
+                >
+                  Download Template
+                </button>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-2">
+                  Upload Excel or CSV File
+                </label>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  onChange={handleExcelFileUpload}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3 text-xs text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-emerald-500 file:text-slate-950 cursor-pointer"
+                />
+              </div>
+
+              {importErrorMsg && (
+                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+                  {importErrorMsg}
+                </div>
+              )}
+
+              {importSuccessMsg && (
+                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs">
+                  {importSuccessMsg}
+                </div>
+              )}
+
+              {/* Parsed Rows Preview Table */}
+              {parsedRows.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs font-mono">
+                    <span className="text-slate-300 font-bold">
+                      Parsed Preview: {parsedRows.length} Rows (Valid: {parsedRows.filter(r => r.isValid).length})
+                    </span>
+                  </div>
+
+                  <div className="bg-slate-950 rounded-2xl border border-slate-800 max-h-56 overflow-y-auto p-2">
+                    <table className="w-full text-left text-xs text-slate-300">
+                      <thead className="text-[10px] font-mono text-slate-400 uppercase border-b border-slate-800">
+                        <tr>
+                          <th className="py-2 px-3">Roll No</th>
+                          <th className="py-2 px-3">Name</th>
+                          <th className="py-2 px-3">Email</th>
+                          <th className="py-2 px-3">Batch</th>
+                          <th className="py-2 px-3 text-center">Valid</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
+                        {parsedRows.map((r, idx) => (
+                          <tr key={idx} className={r.isValid ? '' : 'bg-rose-500/10'}>
+                            <td className="py-1.5 px-3 font-bold text-emerald-400">{r.rollNo}</td>
+                            <td className="py-1.5 px-3 text-slate-200">{r.name}</td>
+                            <td className="py-1.5 px-3 text-slate-400">{r.email}</td>
+                            <td className="py-1.5 px-3 text-slate-400">{r.batch}</td>
+                            <td className="py-1.5 px-3 text-center">
+                              {r.isValid ? (
+                                <CheckCircle2 className="w-4 h-4 text-emerald-400 inline" />
+                              ) : (
+                                <AlertTriangle className="w-4 h-4 text-rose-400 inline" />
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <button
+                    onClick={handleCommitExcelImport}
+                    className="w-full py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-all shadow-md shadow-emerald-500/20"
+                  >
+                    Commit & Save {parsedRows.filter(r => r.isValid).length} Students to Database
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: ADD SINGLE STUDENT */}
+      {showAddStudentModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h2 className="text-lg font-bold text-slate-100">Add Student Examinee</h2>
+              <button
+                onClick={() => setShowAddStudentModal(false)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddStudentSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Roll Number</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. 24B11CS355"
+                  value={newRollNo}
+                  onChange={e => setNewRollNo(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 font-mono uppercase focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Full Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Pranav Vedula"
+                  value={newName}
+                  onChange={e => setNewName(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Class Section</label>
+                <select
+                  value={newClassId}
+                  onChange={e => setNewClassId(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-slate-100 focus:border-emerald-500 font-mono"
+                >
+                  {classes.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Password</label>
+                <input
+                  type="text"
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 font-mono focus:border-emerald-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowAddStudentModal(false)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 font-bold text-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-md shadow-emerald-500/20"
+                >
+                  Add Candidate
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 5: EDIT STUDENT */}
+      {editingStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h2 className="text-lg font-bold text-slate-100">Edit Student Record</h2>
+              <button
+                onClick={() => setEditingStudent(null)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditStudentSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Roll Number</label>
+                <input
+                  type="text"
+                  required
+                  value={editingStudent.rollNo}
+                  onChange={e => setEditingStudent({ ...editingStudent, rollNo: e.target.value.toUpperCase() })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 font-mono uppercase"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Full Name</label>
+                <input
+                  type="text"
+                  required
+                  value={editingStudent.name}
+                  onChange={e => setEditingStudent({ ...editingStudent, name: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Password</label>
+                <input
+                  type="text"
+                  value={editingStudent.password || '1234'}
+                  onChange={e => setEditingStudent({ ...editingStudent, password: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 font-mono"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setEditingStudent(null)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 font-bold text-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 6: CREATE CLASS */}
+      {showCreateClassModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h2 className="text-lg font-bold text-slate-100">Create Academic Section</h2>
+              <button
+                onClick={() => setShowCreateClassModal(false)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateClassSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Section Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. CSE Section A (2024-28)"
+                  value={newClassName}
+                  onChange={e => setNewClassName(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Description</label>
+                <input
+                  type="text"
+                  placeholder="Department & Track Details..."
+                  value={newClassDesc}
+                  onChange={e => setNewClassDesc(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateClassModal(false)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 font-bold text-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs"
                 >
                   Create Class
                 </button>
@@ -1194,363 +1519,28 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
         </div>
       )}
 
-      {/* MANAGE ROSTER MODAL */}
-      {selectedClassForStudents && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
-            <div className="p-5 border-b border-slate-800 flex items-center justify-between">
-              <h3 className="text-base font-bold text-slate-100">
-                Manage Roster for {classes.find(c => c.id === selectedClassForStudents)?.name}
-              </h3>
-              <button
-                onClick={() => setSelectedClassForStudents(null)}
-                className="p-1 rounded text-slate-400 hover:text-slate-100"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-5 space-y-4 overflow-y-auto flex-1 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-300 mb-1">
-                  Search & Toggle Enrolled Students
-                </label>
-                <input
-                  type="text"
-                  value={studentSearchTerm}
-                  onChange={e => setStudentSearchTerm(e.target.value)}
-                  placeholder="Filter by roll no or name..."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none focus:border-cyan-500/60 mb-2"
-                />
-
-                <div className="max-h-48 overflow-y-auto border border-slate-800 rounded-xl p-2 bg-slate-950 space-y-1">
-                  {students
-                    .filter(
-                      s =>
-                        s.name.toLowerCase().includes(studentSearchTerm.toLowerCase()) ||
-                        s.rollNo.toLowerCase().includes(studentSearchTerm.toLowerCase())
-                    )
-                    .map(s => {
-                      const isSelected = selectedStudentIds.includes(s.id);
-                      return (
-                        <div
-                          key={s.id}
-                          onClick={() => {
-                            setSelectedStudentIds(prev =>
-                              isSelected ? prev.filter(id => id !== s.id) : [...prev, s.id]
-                            );
-                          }}
-                          className={`p-2 rounded-lg cursor-pointer flex items-center justify-between ${
-                            isSelected
-                              ? 'bg-cyan-500/15 text-cyan-300 font-bold'
-                              : 'text-slate-400 hover:bg-slate-900'
-                          }`}
-                        >
-                          <span>
-                            <strong className="text-slate-200">{s.rollNo}</strong> - {s.name}
-                          </span>
-                          {isSelected && <Check className="w-4 h-4 text-cyan-400" />}
-                        </div>
-                      );
-                    })}
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-300 mb-1">
-                  Or Paste Roll Numbers / Names (one per line)
-                </label>
-                <textarea
-                  rows={3}
-                  value={manualRosterInput}
-                  onChange={e => setManualRosterInput(e.target.value)}
-                  placeholder="24CS001, John Doe&#10;24CS002, Jane Smith"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-slate-100 font-mono text-xs focus:outline-none"
-                />
-              </div>
-
-              <div className="pt-2 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSelectedClassForStudents(null)}
-                  className="px-4 py-2 rounded-xl text-slate-400 hover:text-slate-200 bg-slate-800"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleAddStudentsSubmit}
-                  className="px-4 py-2 rounded-xl font-bold bg-cyan-500 hover:bg-cyan-400 text-slate-950"
-                >
-                  Save Roster
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* LEADERBOARD MODAL */}
-      {selectedLeaderboardTest && (
-        <LeaderboardModal
-          test={selectedLeaderboardTest}
-          isOpen={Boolean(selectedLeaderboardTest)}
-          onClose={() => setSelectedLeaderboardTest(null)}
-        />
-      )}
-
-      {/* REPORT MODAL */}
-      {selectedViewReport && (
-        <ReportModal
-          report={selectedViewReport}
-          isOpen={Boolean(selectedViewReport)}
-          onClose={() => setSelectedViewReport(null)}
-        />
-      )}
-
-      {activeTab === 'certificates' && (
-        <div className="space-y-6">
-          {/* Top Bar: Title & Action */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] font-mono uppercase tracking-wider text-amber-400 font-bold">
-                  Mentor Credential Module
-                </span>
-                <span className="text-[10px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded-full font-bold">
-                  Pavan B (Lead Mentor)
-                </span>
-              </div>
-              <h2 className="text-xl sm:text-2xl font-black text-slate-100 mt-1">
-                Official Certificate Registry & Manual Issuance
-              </h2>
-              <p className="text-xs text-slate-400">
-                Generate official credentials for any candidate at anytime, verify authenticity, and track personal record milestones.
-              </p>
-            </div>
-
-            <button
-              onClick={() => setIsCertModalOpen(true)}
-              className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black rounded-2xl flex items-center gap-2 transition-all shadow-lg shadow-amber-500/20 text-xs shrink-0"
-            >
-              <Plus size={16} />
-              <span>Issue Certificate for Anyone</span>
-            </button>
-          </div>
-
-          {/* Quick Metrics Strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl">
-              <span className="text-[10px] font-mono text-slate-400 uppercase block">Total Credentials</span>
-              <span className="text-2xl font-black font-mono text-slate-100 mt-0.5 block">{certificates.length}</span>
-              <span className="text-[11px] text-slate-500">Issued & registered</span>
-            </div>
-
-            <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl">
-              <span className="text-[10px] font-mono text-amber-400 uppercase block">Personal Records</span>
-              <span className="text-2xl font-black font-mono text-amber-300 mt-0.5 block">
-                {certificates.filter(c => c.achievementTitle.toLowerCase().includes('personal record')).length}
-              </span>
-              <span className="text-[11px] text-slate-500">Milestone certificates</span>
-            </div>
-
-            <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl">
-              <span className="text-[10px] font-mono text-cyan-400 uppercase block">Master Level (60+ WPM)</span>
-              <span className="text-2xl font-black font-mono text-cyan-300 mt-0.5 block">
-                {certificates.filter(c => c.wpm >= 60).length}
-              </span>
-              <span className="text-[11px] text-slate-500">Advanced typists</span>
-            </div>
-
-            <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl">
-              <span className="text-[10px] font-mono text-emerald-400 uppercase block">Authenticated</span>
-              <span className="text-2xl font-black font-mono text-emerald-300 mt-0.5 block">
-                {certificates.filter(c => c.status === 'valid').length}
-              </span>
-              <span className="text-[11px] text-slate-500">Active valid status</span>
-            </div>
-          </div>
-
-          {/* Search, Filter & Verification Bar */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900 border border-slate-800 p-3 rounded-2xl">
-            <div className="relative w-full sm:w-80">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-              <input
-                type="text"
-                placeholder="Search candidate, roll no, or code..."
-                value={certSearchQuery}
-                onChange={e => setCertSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs focus:outline-none focus:border-amber-500 text-slate-200"
-              />
-            </div>
-
-            <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto">
-              <button
-                onClick={() => setCertFilterType('all')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${
-                  certFilterType === 'all'
-                    ? 'bg-amber-500 text-slate-950 font-bold'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                }`}
-              >
-                All ({certificates.length})
-              </button>
-              <button
-                onClick={() => setCertFilterType('pr')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${
-                  certFilterType === 'pr'
-                    ? 'bg-amber-500 text-slate-950 font-bold'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                }`}
-              >
-                🏆 PR Milestones
-              </button>
-              <button
-                onClick={() => setCertFilterType('master')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${
-                  certFilterType === 'master'
-                    ? 'bg-amber-500 text-slate-950 font-bold'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                }`}
-              >
-                Master (60+ WPM)
-              </button>
-            </div>
-          </div>
-
-          {/* Certificates Table */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-950/80 border-b border-slate-800 text-[11px] font-mono uppercase tracking-wider text-slate-400">
-                    <th className="p-4 font-semibold">Candidate</th>
-                    <th className="p-4 font-semibold">Achievement Credential</th>
-                    <th className="p-4 font-semibold">Assessment Exam</th>
-                    <th className="p-4 font-semibold">Metrics</th>
-                    <th className="p-4 font-semibold">Verification</th>
-                    <th className="p-4 font-semibold text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800 text-xs">
-                  {certificates
-                    .filter(cert => {
-                      if (certFilterType === 'pr') {
-                        if (!cert.achievementTitle.toLowerCase().includes('personal record')) return false;
-                      }
-                      if (certFilterType === 'master') {
-                        if (cert.wpm < 60) return false;
-                      }
-                      if (certSearchQuery.trim()) {
-                        const q = certSearchQuery.toLowerCase();
-                        return (
-                          cert.studentName.toLowerCase().includes(q) ||
-                          cert.rollNo.toLowerCase().includes(q) ||
-                          cert.achievementTitle.toLowerCase().includes(q) ||
-                          cert.testTitle.toLowerCase().includes(q) ||
-                          cert.verificationCode.toLowerCase().includes(q)
-                        );
-                      }
-                      return true;
-                    })
-                    .map(cert => {
-                      const isPR = cert.achievementTitle.toLowerCase().includes('personal record');
-                      return (
-                        <tr key={cert.id} className="hover:bg-slate-800/30 transition-colors">
-                          <td className="p-4">
-                            <div className="font-bold text-slate-100 flex items-center gap-1.5">
-                              <span>{cert.studentName}</span>
-                              {isPR && <Trophy className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
-                            </div>
-                            <div className="text-[11px] font-mono text-slate-400 mt-0.5">{cert.rollNo}</div>
-                          </td>
-                          <td className="p-4">
-                            <div className={`font-semibold ${isPR ? 'text-amber-400 font-bold' : 'text-indigo-300'}`}>
-                              {cert.achievementTitle}
-                            </div>
-                            <div className="text-[10px] text-slate-500 mt-0.5">
-                              Issued by {cert.issuingAuthority || 'Pavan B, CSE Dept'}
-                            </div>
-                          </td>
-                          <td className="p-4 text-slate-300 font-medium">
-                            {cert.testTitle}
-                          </td>
-                          <td className="p-4 font-mono">
-                            <div className="flex gap-1.5">
-                              <span className="px-2 py-0.5 bg-cyan-500/10 text-cyan-400 rounded-lg border border-cyan-500/20 font-bold">
-                                {cert.wpm} WPM
-                              </span>
-                              <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 rounded-lg border border-emerald-500/20 font-bold">
-                                {cert.accuracy}%
-                              </span>
-                            </div>
-                          </td>
-                          <td className="p-4 font-mono text-[11px]">
-                            <span className="px-2 py-1 bg-slate-950 text-cyan-400 border border-slate-800 rounded-lg block w-max font-bold">
-                              {cert.verificationCode}
-                            </span>
-                            <span className="text-[10px] text-slate-500 block mt-0.5">
-                              {cert.issuedAt ? new Date(cert.issuedAt).toLocaleDateString() : 'Active'}
-                            </span>
-                          </td>
-                          <td className="p-4 text-right">
-                            <button
-                              onClick={() => setSelectedViewCert(cert)}
-                              className="px-3 py-1.5 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/30 rounded-xl font-bold text-xs transition-colors inline-flex items-center gap-1.5"
-                            >
-                              <Award className="w-3.5 h-3.5" />
-                              <span>View & Print</span>
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-
-                  {certificates.length === 0 && (
-                    <tr>
-                      <td colSpan={6} className="p-12 text-center">
-                        <Award size={36} className="mx-auto text-slate-600 mb-3" />
-                        <p className="text-slate-300 font-bold text-sm">No certificates issued yet</p>
-                        <p className="text-slate-500 text-xs mt-1">
-                          Certificates are generated automatically when a student beats their personal record or completes a test, or manually via the mentor generator.
-                        </p>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB: TYPING ACADEMY MANAGEMENT */}
-      {activeTab === 'academy' && (
-        <TrainerAcademyManagement
-          classes={classes}
+      {/* CERTIFICATE GENERATOR MODAL */}
+      {showGenCertModal && (
+        <CertificateGeneratorModal
+          onClose={() => setShowGenCertModal(false)}
           students={students}
-          trainerId={currentUser?.id || 'trainer_1'}
-          onOpenCertificateModal={() => setIsCertModalOpen(true)}
+          onGenerate={cert => {
+            addCertificate(cert);
+            setSelectedViewCert(cert);
+            setIsCertModalOpen(true);
+          }}
         />
       )}
 
-      {/* MENTOR CERTIFICATE GENERATOR MODAL */}
-      {isCertModalOpen && (
-        <CertificateGeneratorModal 
-          onClose={() => setIsCertModalOpen(false)} 
-          students={students} 
-          onGenerate={async (cert) => {
-            await addCertificate(cert);
-          }} 
-        />
-      )}
-
-      {/* OFFICIAL VIEW / PRINT CERTIFICATE MODAL */}
+      {/* VIEW CERTIFICATE MODAL */}
       {selectedViewCert && (
         <CertificateModal
           certificate={selectedViewCert}
-          isOpen={Boolean(selectedViewCert)}
-          onClose={() => setSelectedViewCert(null)}
+          isOpen={isCertModalOpen}
+          onClose={() => {
+            setIsCertModalOpen(false);
+            setSelectedViewCert(null);
+          }}
         />
       )}
     </div>

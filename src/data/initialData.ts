@@ -1,7 +1,64 @@
 import { Student, Trainer, ClassRoom, TypingTest, TypingSubmission, StudentCertificate } from '../types';
 
-// Pre-loaded roster (Empty by default: all examinees are managed via Admin or Supabase)
-export const INITIAL_STUDENTS: Student[] = [];
+// Pre-loaded roster with Pranav Vedula and student examinees
+export const INITIAL_STUDENTS: Student[] = [
+  {
+    id: 'std-24b11cs355',
+    rollNo: '24B11CS355',
+    name: 'Pranav Vedula',
+    email: 'vedulapranav@gmail.com',
+    phone: '8179344043',
+    batch: 'Batch 2024-28',
+    batchId: 'b0000000-0000-0000-0000-000000000001',
+    classId: 'cls-cse-a',
+    departmentId: 'd0000000-0000-0000-0000-000000000001',
+    status: 'active',
+    password: '1234',
+    createdAt: '2025-01-05'
+  },
+  {
+    id: 'std-24b11cs101',
+    rollNo: '24B11CS101',
+    name: 'Aarav Sharma',
+    email: 'aarav.sharma@aditya.ac.in',
+    phone: '9876543210',
+    batch: 'Batch 2024-28',
+    batchId: 'b0000000-0000-0000-0000-000000000001',
+    classId: 'cls-cse-a',
+    departmentId: 'd0000000-0000-0000-0000-000000000001',
+    status: 'active',
+    password: '1234',
+    createdAt: '2025-01-05'
+  },
+  {
+    id: 'std-24b11ai201',
+    rollNo: '24B11AI201',
+    name: 'Ananya Rao',
+    email: 'ananya.rao@aditya.ac.in',
+    phone: '9876543211',
+    batch: 'Batch 2024-28',
+    batchId: 'b0000000-0000-0000-0000-000000000001',
+    classId: 'cls-aiml-b',
+    departmentId: 'd0000000-0000-0000-0000-000000000002',
+    status: 'active',
+    password: '1234',
+    createdAt: '2025-01-05'
+  },
+  {
+    id: 'std-24b11it301',
+    rollNo: '24B11IT301',
+    name: 'Rohan Verma',
+    email: 'rohan.verma@aditya.ac.in',
+    phone: '9876543212',
+    batch: 'Batch 2024-28',
+    batchId: 'b0000000-0000-0000-0000-000000000001',
+    classId: 'cls-ds-d',
+    departmentId: 'd0000000-0000-0000-0000-000000000003',
+    status: 'active',
+    password: '1234',
+    createdAt: '2025-01-05'
+  }
+];
 
 // Initial Trainers
 export const INITIAL_TRAINERS: Trainer[] = [
@@ -10,7 +67,9 @@ export const INITIAL_TRAINERS: Trainer[] = [
     username: 'trainer',
     name: 'Pavan B',
     email: 'pavan.b@testtype.edu',
-    assignedClasses: ['', '', ''],
+    phone: '9848012345',
+    designation: 'Senior Faculty & Lead Proctor',
+    assignedClasses: ['cls-cse-a', 'cls-aiml-b', 'cls-ds-d'],
     createdAt: '2025-01-01'
   },
   {
@@ -18,7 +77,9 @@ export const INITIAL_TRAINERS: Trainer[] = [
     username: 'pavan_b',
     name: 'Pavan B (Lead Faculty Mentor)',
     email: 'pavan.lead@testtype.edu',
-    assignedClasses: [''],
+    phone: '9848012346',
+    designation: 'Department Technical Trainer',
+    assignedClasses: ['cls-cse-a'],
     createdAt: '2025-01-15'
   }
 ];
@@ -26,33 +87,41 @@ export const INITIAL_TRAINERS: Trainer[] = [
 // Initial Classes
 export const INITIAL_CLASSES: ClassRoom[] = [
   {
-    id: '',
+    id: 'cls-cse-a',
     name: 'CSE Alpha (2024-28)',
     trainerId: 'trn-1',
-    description: 'Computer Science and Engineering - Section A Core Batch',
-    studentIds: INITIAL_STUDENTS.filter(s => s.classId === '').map(s => s.id),
+    departmentId: 'd0000000-0000-0000-0000-000000000001',
+    batchId: 'b0000000-0000-0000-0000-000000000001',
+    section: 'A',
+    description: 'Computer Science & Engineering - Core Section A Batch',
+    studentIds: ['std-24b11cs355', 'std-24b11cs101'],
     createdAt: '2025-01-05'
   },
   {
-    id: '',
+    id: 'cls-aiml-b',
     name: 'AIML Beta (2024-28)',
     trainerId: 'trn-1',
+    departmentId: 'd0000000-0000-0000-0000-000000000002',
+    batchId: 'b0000000-0000-0000-0000-000000000001',
+    section: 'B',
     description: 'Artificial Intelligence & Machine Learning Track',
-    studentIds: INITIAL_STUDENTS.filter(s => s.classId === '').map(s => s.id),
+    studentIds: ['std-24b11ai201'],
     createdAt: '2025-01-05'
   },
   {
-    id: '',
+    id: 'cls-ds-d',
     name: 'Data Science Delta (2024-28)',
     trainerId: 'trn-1',
-    description: 'Data Engineering and Statistical Computing Division',
-    studentIds: INITIAL_STUDENTS.filter(s => s.classId === '').map(s => s.id),
+    departmentId: 'd0000000-0000-0000-0000-000000000003',
+    batchId: 'b0000000-0000-0000-0000-000000000001',
+    section: 'D',
+    description: 'Data Engineering & Statistical Computing Division',
+    studentIds: ['std-24b11it301'],
     createdAt: '2025-01-05'
   }
 ];
 
 // Initial Tests (Standard, Stories, Coding Modules)
-// Requirement: Coding questions and Stories modules MUST only be seen once the trainer assigns them to the class!
 export const INITIAL_TESTS: TypingTest[] = [
   // Coding Module 1
   {
@@ -62,11 +131,11 @@ export const INITIAL_TESTS: TypingTest[] = [
     language: 'python',
     timeLimit: 120,
     minAccuracy: 92,
-    assignedClassIds: [''], // Assigned to class-1
+    assignedClassIds: ['cls-cse-a', 'cls-aiml-b'],
     isPrebuilt: true,
     createdBy: 'trn-1',
     difficulty: 'medium',
-    description: 'Classic LeetCode array problem demonstrating optimal linear time hash map indexing.',
+    description: 'Classic array indexing problem demonstrating optimal linear time hash map indexing.',
     content: `def two_sum(nums, target):
     seen = {}
     for index, num in enumerate(nums):
@@ -84,7 +153,7 @@ export const INITIAL_TESTS: TypingTest[] = [
     language: 'javascript',
     timeLimit: 180,
     minAccuracy: 90,
-    assignedClassIds: ['', ''], // Assigned to class-1 and class-2
+    assignedClassIds: ['cls-cse-a'],
     isPrebuilt: true,
     createdBy: 'trn-1',
     difficulty: 'hard',
@@ -109,7 +178,7 @@ export const INITIAL_TESTS: TypingTest[] = [
     language: 'java',
     timeLimit: 150,
     minAccuracy: 95,
-    assignedClassIds: [], // UNASSIGNED by default - Locked to students!
+    assignedClassIds: [],
     isPrebuilt: true,
     createdBy: 'trn-1',
     difficulty: 'medium',
@@ -134,7 +203,7 @@ export const INITIAL_TESTS: TypingTest[] = [
     language: 'cpp',
     timeLimit: 120,
     minAccuracy: 90,
-    assignedClassIds: [], // UNASSIGNED by default - Locked!
+    assignedClassIds: [],
     isPrebuilt: true,
     createdBy: 'trn-1',
     difficulty: 'easy',
@@ -164,7 +233,7 @@ int main() {
     language: 'none',
     timeLimit: 90,
     minAccuracy: 94,
-    assignedClassIds: [''], // Assigned to class-1
+    assignedClassIds: ['cls-cse-a', 'cls-aiml-b', 'cls-ds-d'],
     isPrebuilt: true,
     createdBy: 'trn-1',
     difficulty: 'medium',
@@ -179,7 +248,7 @@ int main() {
     language: 'none',
     timeLimit: 120,
     minAccuracy: 92,
-    assignedClassIds: [], // UNASSIGNED by default - Locked!
+    assignedClassIds: ['cls-cse-a'],
     isPrebuilt: true,
     createdBy: 'trn-1',
     difficulty: 'easy',
@@ -194,77 +263,76 @@ int main() {
     language: 'none',
     timeLimit: 90,
     minAccuracy: 95,
-    assignedClassIds: ['', ''], // Assigned to class-2 & 3
+    assignedClassIds: [],
     isPrebuilt: true,
     createdBy: 'trn-1',
     difficulty: 'medium',
-    description: 'Reflections on the dawn of personal computing and early microprocessor breakthroughs.',
-    content: `In a nondescript garage cluttered with soldering irons and breadboards, two visionaries worked through cold winter evenings. The pale monochrome monitor flickered to life, rendering green letters that acknowledged human keystrokes for the very first time. They understood immediately that humanity had crossed an irreversible threshold into an era of boundless computation.`
+    description: 'Chronicle of the first crystalline neural networks computing under subterranean vaults.',
+    content: `At the dawn of the synthetic age, crystalline processors hummed inside subterranean research vaults. The engineers monitored shimmering phosphor oscilloscopes as the neural matrix solved thermodynamic equations in nanoseconds. What had once demanded supercomputer clusters now sparked across microscopic silicon pathways with silent elegance.`
   },
-  // Standard Practice Test (Open for everyone in Free Practice)
+  // Standard Academic Benchmark 1
   {
-    id: 'test-standard-1',
-    title: 'Standard Warm-Up: Quick Words',
+    id: 'test-std-1',
+    title: 'Institutional Speed Benchmark — CSE Track',
     category: 'standard',
     language: 'none',
     timeLimit: 60,
-    minAccuracy: 88,
-    assignedClassIds: ['', '', ''],
+    minAccuracy: 95,
+    assignedClassIds: ['cls-cse-a', 'cls-aiml-b', 'cls-ds-d'],
     isPrebuilt: true,
-    createdBy: 'system',
-    difficulty: 'easy',
-    description: 'Balanced paragraph containing high-frequency vocabulary for muscle memory priming.',
-    content: `Precision and rhythm define the essence of swift keyboard mastery. Developing proper finger dexterity allows ideas to flow seamlessly into digital prose without the friction of hesitation. Keep your wrists relaxed, maintain an even cadence, and trust the gradual refinement of continuous daily practice.`
+    createdBy: 'trn-1',
+    difficulty: 'medium',
+    description: 'Official collegiate typing assessment evaluating rhythm, cadence, and stroke precision.',
+    content: `Touch typing is a foundational skill for computer science and engineering professionals. By maintaining correct finger placement on the home row keys, typists build muscle memory that drastically improves both typing speed and accuracy. Consistent daily practice with varied text helps eliminate keyboard hunting, allowing the mind to focus entirely on algorithmic design and creative problem solving.`
   }
 ];
 
-// Initial Submissions (Empty by default: all submissions are recorded dynamically during exams)
-export const INITIAL_SUBMISSIONS: TypingSubmission[] = [];
+export const INITIAL_SUBMISSIONS: TypingSubmission[] = [
+  {
+    id: 'sub-sample-1',
+    testId: 'test-std-1',
+    testTitle: 'Institutional Speed Benchmark — CSE Track',
+    testCategory: 'standard',
+    studentId: 'std-24b11cs355',
+    studentName: 'Pranav Vedula',
+    rollNo: '24B11CS355',
+    classId: 'cls-cse-a',
+    className: 'CSE Alpha (2024-28)',
+    wpm: 86,
+    rawWpm: 88,
+    netWpm: 86,
+    accuracy: 99,
+    errors: 1,
+    totalChars: 430,
+    correctChars: 425,
+    timeTaken: 60,
+    proctorBlurFlags: 0,
+    history: [],
+    passed: true,
+    timestamp: '2026-09-28T14:30:00.000Z',
+    status: 'submitted'
+  }
+];
 
-// Initial Seed Certificates
 export const INITIAL_CERTIFICATES: StudentCertificate[] = [
   {
-    id: 'cert-seed-1',
-    studentId: 'student-1',
-    studentName: 'Aarav Sharma',
-    rollNo: '2024-CSE-001',
-    achievementTitle: '🏆 Personal Record Achievement (58 WPM Milestone)',
-    wpm: 58,
-    accuracy: 97,
-    testTitle: 'Technical Typing Benchmark Exam',
-    issuedAt: '2025-02-15T10:30:00.000Z',
-    issuingAuthority: 'Pavan B (Lead Mentor & Proctor), CSE Dept',
-    verificationCode: 'V-PR58ARV',
-    certificateNumber: 'TYPETEST-CERT-2025-ARV01',
-    status: 'valid'
-  },
-  {
-    id: 'cert-seed-2',
-    studentId: 'student-2',
-    studentName: 'Ananya Verma',
-    rollNo: '2024-CSE-002',
-    achievementTitle: 'Master Assessment Certification',
-    wpm: 65,
-    accuracy: 98,
-    testTitle: 'Story: The Silicon Dawn',
-    issuedAt: '2025-02-20T14:15:00.000Z',
-    issuingAuthority: 'Pavan B (Lead Mentor & Proctor), CSE Dept',
-    verificationCode: 'V-MST65ANV',
-    certificateNumber: 'TYPETEST-CERT-2025-ANV02',
+    id: 'cert-pranav-24b11cs355-apex',
+    studentId: 'std-24b11cs355',
+    studentName: 'Pranav Vedula',
+    rollNo: '24B11CS355',
+    achievementTitle: '🏆 Grandmaster Touch Typist Apex Credential',
+    wpm: 86,
+    accuracy: 99,
+    testTitle: 'Department of Technical Training Official Certification Exam',
+    issuedAt: '2026-09-28T14:35:00.000Z',
+    issuingAuthority: 'Department of Technical Training (DOTT), Aditya University',
+    verificationCode: 'DOTT-ADITYA-24B11CS355-APEX',
+    certificateNumber: 'DOTT-TTC-2026-817934',
     status: 'valid'
   }
 ];
 
-// Common Monkeytype English words for practice mode
-export const MONKEYTYPE_WORDS = [
-  'the', 'be', 'of', 'and', 'a', 'to', 'in', 'he', 'have', 'it', 'that', 'for', 'they', 'I',
-  'with', 'as', 'not', 'on', 'she', 'at', 'by', 'this', 'we', 'you', 'do', 'but', 'from', 'or',
-  'which', 'one', 'would', 'all', 'will', 'there', 'say', 'who', 'make', 'when', 'can', 'more',
-  'if', 'no', 'man', 'out', 'other', 'so', 'what', 'time', 'up', 'go', 'about', 'than', 'into',
-  'could', 'state', 'only', 'new', 'year', 'some', 'take', 'come', 'these', 'know', 'see', 'use',
-  'get', 'like', 'then', 'first', 'any', 'work', 'now', 'may', 'such', 'give', 'over', 'think',
-  'most', 'even', 'find', 'day', 'also', 'after', 'way', 'many', 'must', 'look', 'before', 'great',
-  'back', 'through', 'long', 'where', 'much', 'should', 'well', 'people', 'down', 'own', 'just',
-  'system', 'code', 'function', 'class', 'object', 'data', 'algorithm', 'server', 'logic', 'array',
-  'string', 'number', 'memory', 'speed', 'target', 'index', 'module', 'stream', 'value', 'return'
+export const MONKEYTYPE_WORDS: string[] = [
+  'the', 'be', 'of', 'and', 'a', 'to', 'in', 'he', 'have', 'it', 'that', 'for', 'they', 'with', 'as', 'not', 'on', 'she', 'at', 'by', 'this', 'we', 'you', 'do', 'but', 'his', 'from', 'they', 'say', 'her', 'she', 'or', 'an', 'will', 'my', 'one', 'all', 'would', 'there', 'their', 'what', 'so', 'up', 'out', 'if', 'about', 'who', 'get', 'which', 'go', 'me', 'when', 'make', 'can', 'like', 'time', 'no', 'just', 'him', 'know', 'take', 'people', 'into', 'year', 'your', 'good', 'some', 'could', 'them', 'see', 'other', 'than', 'then', 'now', 'look', 'only', 'come', 'its', 'over', 'think', 'also', 'back', 'after', 'use', 'two', 'how', 'our', 'work', 'first', 'well', 'way', 'even', 'new', 'want', 'because', 'any', 'these', 'give', 'day', 'most', 'us', 'system', 'code', 'function', 'class', 'const', 'return', 'async', 'await', 'import', 'export', 'interface', 'string', 'number', 'boolean', 'array', 'object', 'data', 'algorithm', 'binary', 'tree', 'stack', 'queue', 'graph', 'database', 'network', 'thread', 'process', 'memory', 'pointer', 'compile', 'runtime', 'terminal', 'server', 'client', 'engine', 'speed', 'accuracy', 'keyboard', 'keystroke', 'cadence', 'velocity', 'finger', 'rhythm', 'tactile', 'switch', 'mechanical', 'optical', 'latency', 'benchmark', 'quantum', 'matrix', 'vector', 'neural', 'tensor', 'stream', 'buffer', 'socket', 'packet', 'protocol', 'syntax', 'logic', 'variable', 'method', 'promise', 'callback', 'closure', 'scope', 'module', 'package', 'build', 'deploy', 'proctor', 'aditya', 'university', 'mentor', 'training', 'mastery', 'apex'
 ];
+

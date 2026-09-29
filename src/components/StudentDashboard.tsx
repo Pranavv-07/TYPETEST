@@ -1,18 +1,33 @@
-import { CheckCircle2, GraduationCap, ArrowRight, Sparkles } from "lucide-react";
 import React, { useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { Trophy, Clock, Target, Zap, Activity, Calendar, Flame } from 'lucide-react';
+import {
+  Trophy,
+  Clock,
+  Target,
+  Zap,
+  Activity,
+  Calendar,
+  Flame,
+  CheckCircle2,
+  GraduationCap,
+  ArrowRight,
+  Sparkles
+} from 'lucide-react';
 import { PerformanceOverTimeChart } from './PerformanceOverTimeChart';
-import { getStudentAcademyProfile, getActiveCurriculum, getStudentAttemptHistory, calculateStreakFromDates } from '../services/academyService';
+import {
+  getStudentAcademyProfile,
+  getActiveCurriculum,
+  getStudentAttemptHistory,
+  calculateStreakFromDates
+} from '../services/academyService';
 
 interface StudentDashboardProps {
   onOpenAcademy?: () => void;
 }
 
 export const StudentDashboard: React.FC<StudentDashboardProps> = ({ onOpenAcademy }) => {
-  const { currentUser, submissions, students } = useApp();
+  const { currentUser, submissions } = useApp();
 
-  // Academy Profile
   const academyProfile = useMemo(() => {
     return getStudentAcademyProfile(currentUser?.id || 'guest_student');
   }, [currentUser]);
@@ -32,35 +47,47 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ onOpenAcadem
       mastered,
       total,
       percent: total > 0 ? Math.round((mastered / total) * 100) : 0,
-      currentLevel: curriculum.levels.find(l => l.id === academyProfile.currentLevelId) || curriculum.levels[0],
+      currentLevel:
+        curriculum.levels.find(l => l.id === academyProfile.currentLevelId) || curriculum.levels[0],
     };
   }, [curriculum, academyProfile]);
 
-  const mySubmissions = useMemo(() => submissions.filter(s =>
-    s.studentId === currentUser?.id ||
-    (currentUser?.rollNo && s.rollNo && s.rollNo.trim().toUpperCase() === currentUser.rollNo.trim().toUpperCase()) ||
-    (currentUser?.username && s.rollNo && s.rollNo.trim().toUpperCase() === currentUser.username.trim().toUpperCase()) ||
-    (currentUser?.name && s.studentName && s.studentName.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
-  ), [submissions, currentUser]);
-  
+  const mySubmissions = useMemo(
+    () =>
+      submissions.filter(
+        s =>
+          s.studentId === currentUser?.id ||
+          (currentUser?.rollNo &&
+            s.rollNo &&
+            s.rollNo.trim().toUpperCase() === currentUser.rollNo.trim().toUpperCase()) ||
+          (currentUser?.username &&
+            s.rollNo &&
+            s.rollNo.trim().toUpperCase() === currentUser.username.trim().toUpperCase()) ||
+          (currentUser?.name &&
+            s.studentName &&
+            s.studentName.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
+      ),
+    [submissions, currentUser]
+  );
+
   const stats = useMemo(() => {
     let bestWpm = 0;
     let sumWpm = 0;
     let sumAccuracy = 0;
     let totalTime = 0;
     let testsCompleted = 0;
-    
+
     mySubmissions.forEach(sub => {
       testsCompleted++;
       sumWpm += sub.netWpm;
       sumAccuracy += sub.accuracy;
-      totalTime += sub.timeTaken || 0;
+      totalTime += sub.timeSpentSeconds || 0;
       if (sub.netWpm > bestWpm) bestWpm = sub.netWpm;
     });
 
     const avgWpm = testsCompleted ? Math.round(sumWpm / testsCompleted) : 0;
     const avgAccuracy = testsCompleted ? Math.round(sumAccuracy / testsCompleted) : 0;
-    const totalScore = Math.round((avgWpm * avgAccuracy) / 100 * testsCompleted);
+    const totalScore = Math.round(((avgWpm * avgAccuracy) / 100) * testsCompleted);
 
     const dates: string[] = [];
     mySubmissions.forEach(s => {
@@ -88,73 +115,86 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ onOpenAcadem
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <h2 className="text-2xl font-bold text-slate-800">My Dashboard</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-bold text-slate-100">Performance Summary</h2>
+        <span className="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20">
+          DOTT Verified Record
+        </span>
+      </div>
+
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-
-        <div className="bg-orange-500/10 border border-orange-500/20 rounded-2xl p-4 sm:p-6 shadow-sm flex flex-col justify-between">
-          <div className="flex items-center gap-3 mb-2 sm:mb-4">
-            <div className="p-2 sm:p-3 bg-orange-500/20 text-orange-600 rounded-xl">
-              <Flame size={20} className="sm:w-6 sm:h-6" />
+        {/* Streak Card */}
+        <div className="bg-gradient-to-br from-orange-500/15 via-orange-500/10 to-transparent border border-orange-500/30 rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="p-2 bg-orange-500/20 text-orange-400 rounded-xl">
+              <Flame size={18} className="fill-orange-400 animate-pulse" />
             </div>
-            <h3 className="text-sm font-semibold text-orange-800">Current Streak</h3>
+            <h3 className="text-xs font-bold text-orange-300 uppercase tracking-wider">Current Streak</h3>
           </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-3xl sm:text-4xl font-black tracking-tight text-slate-800">{stats.currentStreak}</span>
-            <span className="text-sm font-medium text-slate-500">days</span>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-3xl font-black text-slate-100">{stats.currentStreak}</span>
+            <span className="text-xs font-medium text-slate-400">days</span>
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <div className="flex items-center space-x-2 text-slate-500 mb-2">
-            <Trophy className="w-5 h-5 text-amber-500" />
-            <span className="font-medium text-sm">Best WPM</span>
+        {/* Best WPM */}
+        <div className="bg-slate-900/90 border border-slate-800 p-4 sm:p-5 rounded-2xl shadow-sm flex flex-col justify-between">
+          <div className="flex items-center space-x-2 text-slate-400 mb-2">
+            <Trophy className="w-4 h-4 text-amber-400" />
+            <span className="font-bold text-xs uppercase tracking-wider">Best WPM</span>
           </div>
-          <div className="text-3xl font-bold text-slate-800">{stats.bestWpm}</div>
+          <div className="text-3xl font-black text-emerald-400">{stats.bestWpm}</div>
         </div>
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <div className="flex items-center space-x-2 text-slate-500 mb-2">
-            <Activity className="w-5 h-5 text-blue-500" />
-            <span className="font-medium text-sm">Avg WPM</span>
+
+        {/* Avg WPM */}
+        <div className="bg-slate-900/90 border border-slate-800 p-4 sm:p-5 rounded-2xl shadow-sm flex flex-col justify-between">
+          <div className="flex items-center space-x-2 text-slate-400 mb-2">
+            <Activity className="w-4 h-4 text-emerald-400" />
+            <span className="font-bold text-xs uppercase tracking-wider">Avg WPM</span>
           </div>
-          <div className="text-3xl font-bold text-slate-800">{stats.avgWpm}</div>
+          <div className="text-3xl font-black text-slate-100">{stats.avgWpm}</div>
         </div>
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <div className="flex items-center space-x-2 text-slate-500 mb-2">
-            <Target className="w-5 h-5 text-emerald-500" />
-            <span className="font-medium text-sm">Accuracy</span>
+
+        {/* Accuracy */}
+        <div className="bg-slate-900/90 border border-slate-800 p-4 sm:p-5 rounded-2xl shadow-sm flex flex-col justify-between">
+          <div className="flex items-center space-x-2 text-slate-400 mb-2">
+            <Target className="w-4 h-4 text-amber-400" />
+            <span className="font-bold text-xs uppercase tracking-wider">Accuracy</span>
           </div>
-          <div className="text-3xl font-bold text-slate-800">{stats.avgAccuracy}%</div>
+          <div className="text-3xl font-black text-amber-400">{stats.avgAccuracy || 100}%</div>
         </div>
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <div className="flex items-center space-x-2 text-slate-500 mb-2">
-            <CheckCircle2 className="w-5 h-5 text-purple-500" />
-            <span className="font-medium text-sm">Completed</span>
+
+        {/* Tests Completed */}
+        <div className="bg-slate-900/90 border border-slate-800 p-4 sm:p-5 rounded-2xl shadow-sm flex flex-col justify-between">
+          <div className="flex items-center space-x-2 text-slate-400 mb-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            <span className="font-bold text-xs uppercase tracking-wider">Completed</span>
           </div>
-          <div className="text-3xl font-bold text-slate-800">{stats.testsCompleted}</div>
+          <div className="text-3xl font-black text-slate-100">{stats.testsCompleted}</div>
         </div>
       </div>
 
       {/* Typing Academy Curriculum Featured Banner */}
-      <div className="bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-cyan-500/10 border border-amber-500/30 rounded-2xl p-6 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-5">
+      <div className="bg-gradient-to-r from-amber-500/15 via-emerald-500/10 to-slate-900 border border-amber-500/30 rounded-3xl p-6 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-5">
         <div className="space-y-2 flex-1">
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-amber-500/20 text-amber-700 border border-amber-500/30 flex items-center gap-1">
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
               <GraduationCap className="w-3.5 h-3.5" /> Typing Academy
             </span>
-            <span className="text-xs font-mono text-slate-600 font-semibold">
+            <span className="text-xs font-mono text-slate-300 font-semibold">
               {academyStats.mastered} of {academyStats.total} Lessons Mastered ({academyStats.percent}%)
             </span>
           </div>
-          <h3 className="text-lg font-black text-slate-900">
+          <h3 className="text-lg font-black text-slate-100">
             {academyStats.currentLevel.title}
           </h3>
-          <p className="text-xs text-slate-600 leading-relaxed max-w-xl">
-            {academyStats.currentLevel.tagline} — Master touch typing with muscle memory, anatomical finger guidance, and progressive accuracy unlocks.
+          <p className="text-xs text-slate-300 leading-relaxed max-w-xl">
+            {academyStats.currentLevel.tagline} — Progressive touch-typing mastery with guided anatomical finger cues, rhythmic bigrams, and strict 95% accuracy assessments.
           </p>
 
-          <div className="w-full max-w-md h-2 bg-slate-200 rounded-full overflow-hidden mt-2">
+          <div className="w-full max-w-md h-2.5 bg-slate-950 rounded-full overflow-hidden mt-2 border border-slate-800">
             <div
-              className="h-full bg-gradient-to-r from-amber-500 to-emerald-500 rounded-full"
+              className="h-full bg-gradient-to-r from-amber-500 to-emerald-400 rounded-full transition-all duration-500"
               style={{ width: `${academyStats.percent}%` }}
             />
           </div>
@@ -163,15 +203,15 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ onOpenAcadem
         {onOpenAcademy && (
           <button
             onClick={onOpenAcademy}
-            className="px-5 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-all shadow-md flex items-center gap-2 shrink-0"
+            className="px-5 py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-amber-500/20 flex items-center gap-2 shrink-0 cursor-pointer"
           >
-            <span>Resume Academy</span>
+            <span>Open Academy</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         )}
       </div>
 
-      {/* Recharts Performance Over Time line chart */}
+      {/* Speed & Accuracy Over Time Chart */}
       <PerformanceOverTimeChart submissions={mySubmissions} />
     </div>
   );
