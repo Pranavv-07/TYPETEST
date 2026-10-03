@@ -186,8 +186,48 @@ export interface TypingSubmission {
 
 export type TestSubmission = TypingSubmission;
 
+export interface CertificateRecord {
+  id: string; // e.g. 'TT-2026-000001'
+  certificateId: string;
+  studentId: string;
+  attemptId: string; // Direct link to verified attempt
+  testId?: string;
+  recipientName: string;
+  recipientRollNo: string;
+  achievementTitle: string;
+  testName: string;
+  wpm: number;
+  grossWpm?: number;
+  netWpm?: number;
+  accuracy: number;
+  consistency?: number;
+  errorCount?: number;
+  issuedAt: string;
+  testCompletedAt: string;
+  issuingAuthority: string;
+  organization: string;
+  template?: 'modern' | 'classic' | 'minimal' | 'corporate' | string;
+  status: 'valid' | 'revoked' | 'expired';
+  verificationToken: string;
+  verificationCode: string;
+  antiCheatVerified: boolean;
+  proctorViolations: number;
+  createdAt?: string;
+  verifiedAttempt?: {
+    id: string;
+    netWpm: number;
+    rawWpm: number;
+    accuracy: number;
+    errors: number;
+    timeTaken: number;
+    proctorBlurFlags: number;
+    passed: boolean;
+    submittedAt: string;
+  };
+}
+
 export interface StudentCertificate {
-  id: string;
+  id: string; // Unique, persistent ID (e.g. 'TT-2026-000001')
   studentId: string;
   studentName: string;
   rollNo: string;
@@ -199,11 +239,12 @@ export interface StudentCertificate {
   consistency?: number;
   testId?: string;
   testTitle: string;
-  attemptId?: string;
+  attemptId?: string; // Linked verified examination attempt ID
   issuedAt: string;
   testCompletedAt?: string;
   issuingAuthority: string;
   verificationCode: string;
+  verificationToken?: string;
   certificateNumber?: string;
   status: 'valid' | 'revoked' | 'expired';
   certificateType?: 'generic' | 'dott_university' | 'organization';
@@ -215,6 +256,19 @@ export interface StudentCertificate {
   secondarySignerName?: string;
   secondarySignerTitle?: string;
   template?: string;
+  antiCheatVerified?: boolean;
+  proctorViolations?: number;
+  verifiedAttempt?: {
+    id: string;
+    netWpm: number;
+    rawWpm: number;
+    accuracy: number;
+    errors: number;
+    timeTaken: number;
+    proctorBlurFlags: number;
+    passed: boolean;
+    submittedAt: string;
+  };
 }
 
 export interface TestReport {

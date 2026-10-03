@@ -196,6 +196,36 @@ CREATE TABLE IF NOT EXISTS certificates (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- 12B. CERTIFICATE RECORDS (Persistent Unique-ID Registry)
+CREATE TABLE IF NOT EXISTS certificate_records (
+    id TEXT PRIMARY KEY, -- e.g. 'TT-2026-000001'
+    certificate_id TEXT UNIQUE NOT NULL,
+    student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    attempt_id UUID NOT NULL REFERENCES attempts(id) ON DELETE CASCADE,
+    test_id UUID REFERENCES tests(id) ON DELETE SET NULL,
+    recipient_name TEXT NOT NULL,
+    recipient_roll_no TEXT NOT NULL,
+    achievement_title TEXT NOT NULL,
+    test_name TEXT NOT NULL,
+    wpm NUMERIC NOT NULL,
+    gross_wpm NUMERIC,
+    net_wpm NUMERIC,
+    accuracy NUMERIC NOT NULL,
+    consistency NUMERIC DEFAULT 95,
+    error_count INTEGER DEFAULT 0,
+    issued_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    test_completed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    issuing_authority TEXT NOT NULL DEFAULT 'TYPETEST Certification Authority',
+    organization TEXT NOT NULL DEFAULT 'TYPETEST',
+    template TEXT DEFAULT 'modern',
+    status TEXT NOT NULL DEFAULT 'valid' CHECK (status IN ('valid', 'revoked', 'expired')),
+    verification_token TEXT UNIQUE NOT NULL,
+    verification_code TEXT UNIQUE NOT NULL,
+    anti_cheat_verified BOOLEAN DEFAULT true,
+    proctor_violations INTEGER DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- 13. AUDIT LOGS (Immutable System Activity Trail)
 CREATE TABLE IF NOT EXISTS audit_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -30,10 +30,10 @@ const MainLayout: React.FC = () => {
       if (hash.includes('verify-certificate') || path.includes('verify-certificate') || params.get('cert') || params.get('verify')) {
         let certId = params.get('cert') || params.get('verify') || params.get('id') || '';
         if (!certId && hash.includes('verify-certificate/')) {
-          certId = hash.split('verify-certificate/')[1]?.trim() || '';
+          certId = hash.split('verify-certificate/')[1]?.split('?')[0]?.split('#')[0]?.trim() || '';
         }
         if (!certId && path.includes('verify-certificate/')) {
-          certId = path.split('verify-certificate/')[1]?.trim() || '';
+          certId = path.split('verify-certificate/')[1]?.split('?')[0]?.split('#')[0]?.trim() || '';
         }
         return { view: 'verify', certId: decodeURIComponent(certId) };
       }

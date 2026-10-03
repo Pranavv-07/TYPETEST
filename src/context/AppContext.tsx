@@ -54,7 +54,10 @@ import {
   checkpointAttempt as apiCheckpointAttempt,
   recordViolation as apiRecordViolation,
   submitTestAttemptAtomic,
-  addMemoryCertificate
+  addMemoryCertificate,
+  createCertificateRecord,
+  updateCertificateStatusInDatabase,
+  generateUniqueCertificateId
 } from '../services/supabaseService';
 import { soundController } from '../utils/audio';
 
@@ -724,49 +727,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const addCertificate = async (cert: StudentCertificate) => {
-    setCertificates(prev => [cert, ...prev.filter(c => c.id !== cert.id)]);
-    addMemoryCertificate(cert);
-    if (isSupabaseConfigured()) {
-      try {
-        await supabase.from('certificates').insert([{
-          id: cert.id,
-          student_id: cert.studentId,
-          certificate_number: cert.certificateNumber,
-          verification_code: cert.verificationCode,
-          score: cert.wpm,
-          accuracy: cert.accuracy,
-          achievement_title: cert.achievementTitle,
-          issued_at: cert.issuedAt,
-          status: cert.status
-        }]);
-      } catch (e) {
-        console.warn('Could not insert certificate to Supabase:', e);
-      }
-    }
+    const persisted = await createCertificateRecord(cert);
+    setCertificates(prev => [persisted, ...prev.filter(c => c.id !== persisted.id)]);
   };
 
   const updateCertificateStatus = async (certId: string, status: 'valid' | 'revoked' | 'expired') => {
     setCertificates(prev =>
       prev.map(c => (c.id === certId || c.verificationCode === certId || c.certificateNumber === certId ? { ...c, status } : c))
     );
-    if (isSupabaseConfigured()) {
-      try {
-        await supabase
-          .from('certificates')
-          .update({ status })
-          .or(`id.eq.${certId},verification_code.eq.${certId},certificate_number.eq.${certId}`);
-      } catch (e) {
-        console.warn('Could not update certificate in Supabase:', e);
-      }
-    }
+    await updateCertificateStatusInDatabase(certId, status);
   };
 
   const deleteCertificate = async (certId: string) => {
     setCertificates(prev =>
       prev.filter(c => c.id !== certId && c.verificationCode !== certId && c.certificateNumber !== certId)
     );
+    await updateCertificateStatusInDatabase(certId, 'revoked');
     if (isSupabaseConfigured()) {
       try {
+        await supabase
+          .from('certificate_records')
+          .delete()
+          .or(`id.eq.${certId},certificate_id.eq.${certId}`);
         await supabase
           .from('certificates')
           .delete()
@@ -786,25 +768,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     accuracy: number;
     testTitle: string;
     issuingAuthority?: string;
+    attemptId?: string;
+    template?: string;
+    organizationName?: string;
   }): Promise<StudentCertificate> => {
-    const certNumber = `TYPETEST-CERT-${new Date().getFullYear()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-    const verifyCode = `V-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-    const newCert: StudentCertificate = {
-      id: `cert-manual-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      studentId: certData.studentId || `ext-${Date.now()}`,
+    const certId = generateUniqueCertificateId();
+    const newCert = await createCertificateRecord({
+      id: certId,
+      studentId: certData.studentId || `std-ext-${Date.now()}`,
       studentName: certData.studentName,
       rollNo: certData.rollNo || 'EXT-VERIFIED',
       achievementTitle: certData.achievementTitle,
       wpm: certData.wpm,
       accuracy: certData.accuracy,
       testTitle: certData.testTitle,
-      issuedAt: new Date().toISOString(),
-      issuingAuthority: certData.issuingAuthority || 'Pavan B (Lead Mentor & Proctor), CSE Dept',
-      verificationCode: verifyCode,
-      certificateNumber: certNumber,
+      issuingAuthority: certData.issuingAuthority || 'TYPETEST Global Certification Authority',
+      attemptId: certData.attemptId,
+      template: certData.template || 'modern',
+      organizationName: certData.organizationName || 'TYPETEST',
       status: 'valid'
-    };
-    await addCertificate(newCert);
+    });
+    setCertificates(prev => [newCert, ...prev.filter(c => c.id !== newCert.id)]);
     return newCert;
   };
 

@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { X, Download, Award, ShieldCheck, Printer, CheckCircle2, UserCheck, Sparkles, Building, Hash } from 'lucide-react';
 import { Student, StudentCertificate } from '../types';
 import { formatISTDateOnly } from '../utils/dateUtils';
+import { generateUniqueCertificateId } from '../services/supabaseService';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
@@ -66,22 +67,28 @@ export const CertificateGeneratorModal: React.FC<CertificateGeneratorModalProps>
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
       pdf.save(`${effectiveName.replace(/\s+/g, '_')}_TYPETEST_Certificate.pdf`);
 
-      const certNumber = `TT-${new Date().getFullYear()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-      const verifyCode = `TT-V-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+      const certId = generateUniqueCertificateId();
+      const verifyCode = certId;
+      const verifyToken = `TT-VT-${new Date().getFullYear()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}-${certId.replace(/[^0-9]/g, '').slice(-6) || '000001'}`;
 
       const newCert: StudentCertificate = {
-        id: `cert-manual-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        id: certId,
         studentId: candidateMode === 'enrolled' && selectedStudent ? selectedStudent.id : `candidate-${Date.now()}`,
         studentName: effectiveName,
         rollNo: effectiveRollNo,
         achievementTitle,
         wpm: Number(wpm) || 0,
+        grossWpm: Number(wpm) || 0,
+        netWpm: Number(wpm) || 0,
         accuracy: Number(accuracy) || 0,
+        consistency: 96,
         testTitle,
         issuedAt: new Date(issueDate || Date.now()).toISOString(),
+        testCompletedAt: new Date(issueDate || Date.now()).toISOString(),
         issuingAuthority: customOrg || 'TYPETEST Verification Authority',
         verificationCode: verifyCode,
-        certificateNumber: certNumber,
+        verificationToken: verifyToken,
+        certificateNumber: certId,
         status: 'valid',
         organizationName: customOrg,
         certificateTitle: certTitle,
@@ -89,7 +96,9 @@ export const CertificateGeneratorModal: React.FC<CertificateGeneratorModalProps>
         primarySignerTitle: issuerTitle,
         secondarySignerName: secondarySigner,
         secondarySignerTitle: secondaryTitle,
-        template
+        template,
+        antiCheatVerified: true,
+        proctorViolations: 0
       };
 
       onGenerate(newCert);
