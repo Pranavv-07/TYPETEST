@@ -72,6 +72,7 @@ export interface AdminUser {
   username: string;
   role: 'SUPER ADMIN' | 'ADMIN' | 'ACADEMIC ADMIN' | 'EXAM ADMIN';
   status: 'active' | 'inactive';
+  password?: string;
   createdAt: string;
 }
 
@@ -193,12 +194,27 @@ export interface StudentCertificate {
   achievementTitle: string;
   wpm: number;
   accuracy: number;
+  grossWpm?: number;
+  netWpm?: number;
+  consistency?: number;
+  testId?: string;
   testTitle: string;
+  attemptId?: string;
   issuedAt: string;
+  testCompletedAt?: string;
   issuingAuthority: string;
   verificationCode: string;
   certificateNumber?: string;
-  status?: 'valid' | 'revoked';
+  status: 'valid' | 'revoked' | 'expired';
+  certificateType?: 'generic' | 'dott_university' | 'organization';
+  organizationName?: string;
+  department?: string;
+  certificateTitle?: string;
+  primarySignerName?: string;
+  primarySignerTitle?: string;
+  secondarySignerName?: string;
+  secondarySignerTitle?: string;
+  template?: string;
 }
 
 export interface TestReport {
@@ -226,6 +242,16 @@ export interface TestReport {
     timestamp?: string;
     rank?: number;
   }[];
+}
+
+export interface StudentImportSummary {
+  totalRows: number;
+  importedCount: number;
+  updatedCount: number;
+  skippedCount: number;
+  failedCount: number;
+  errors: { row: number; rollNo: string; name: string; error: string }[];
+  importedStudents: Student[];
 }
 
 export interface BulkImportResult {

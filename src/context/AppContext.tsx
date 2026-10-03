@@ -122,6 +122,8 @@ interface AppContextType {
   getStudentCertificates: (studentId: string) => StudentCertificate[];
   downloadReportCSV: (report: TestReport) => void;
   addCertificate: (cert: StudentCertificate) => Promise<void>;
+  updateCertificateStatus: (certId: string, status: 'valid' | 'revoked' | 'expired') => Promise<void>;
+  deleteCertificate: (certId: string) => Promise<void>;
   issueManualCertificate: (certData: {
     studentId?: string;
     studentName: string;
@@ -743,6 +745,38 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  const updateCertificateStatus = async (certId: string, status: 'valid' | 'revoked' | 'expired') => {
+    setCertificates(prev =>
+      prev.map(c => (c.id === certId || c.verificationCode === certId || c.certificateNumber === certId ? { ...c, status } : c))
+    );
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase
+          .from('certificates')
+          .update({ status })
+          .or(`id.eq.${certId},verification_code.eq.${certId},certificate_number.eq.${certId}`);
+      } catch (e) {
+        console.warn('Could not update certificate in Supabase:', e);
+      }
+    }
+  };
+
+  const deleteCertificate = async (certId: string) => {
+    setCertificates(prev =>
+      prev.filter(c => c.id !== certId && c.verificationCode !== certId && c.certificateNumber !== certId)
+    );
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase
+          .from('certificates')
+          .delete()
+          .or(`id.eq.${certId},verification_code.eq.${certId},certificate_number.eq.${certId}`);
+      } catch (e) {
+        console.warn('Could not delete certificate in Supabase:', e);
+      }
+    }
+  };
+
   const issueManualCertificate = async (certData: {
     studentId?: string;
     studentName: string;
@@ -874,6 +908,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         getStudentCertificates,
         downloadReportCSV,
         addCertificate,
+        updateCertificateStatus,
+        deleteCertificate,
         issueManualCertificate
       }}
     >

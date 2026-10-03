@@ -161,7 +161,7 @@ export const AcademyDashboard: React.FC<AcademyDashboardProps> = ({
   const handleClaimCertificate = () => {
     const cert = issueAcademyCertificate(
       { id: studentId, name: studentName, rollNo: currentUser?.rollNo || '24B11CS355' },
-      'Department of Technical Training (DOTT), Aditya University',
+      'TYPETEST Global Touch Typing Academy',
       stats.highestWpm || 85,
       stats.avgAcc || 99
     );
@@ -196,10 +196,10 @@ export const AcademyDashboard: React.FC<AcademyDashboardProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
               <GraduationCap className="w-3.5 h-3.5 text-emerald-400" />
-              DOTT Touch Typing Academy
+              TYPETEST Touch Typing Academy
             </span>
             <span className="text-xs font-mono text-slate-400">
-              Department of Technical Training, Aditya University
+              Professional Typing & Keyboard Mastery Program
             </span>
             {profile.streakDays > 0 && (
               <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-orange-500/15 text-orange-400 border border-orange-500/30 flex items-center gap-1">
@@ -274,7 +274,7 @@ export const AcademyDashboard: React.FC<AcademyDashboardProps> = ({
               </h3>
             </div>
             <span className="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-              Aditya University DOTT
+              TYPETEST Global Academy
             </span>
           </div>
 
@@ -375,13 +375,13 @@ export const AcademyDashboard: React.FC<AcademyDashboardProps> = ({
             </div>
             <div>
               <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-400 block">
-                DOTT Graduation Milestone
+                Academy Graduation Milestone
               </span>
               <h2 className="text-xl font-black text-slate-100">
                 Official Touch Typing Certificate Ready
               </h2>
               <p className="text-xs text-slate-300">
-                Issued by Department of Technical Training, Aditya University with official endorsement from Dr. G Ramu, Dean Technical Trainings.
+                Issued by TYPETEST Global Certification Board with cryptographically verified credentials.
               </p>
             </div>
           </div>

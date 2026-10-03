@@ -21,16 +21,20 @@ export const CertificateGeneratorModal: React.FC<CertificateGeneratorModalProps>
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [customName, setCustomName] = useState('');
   const [customRollNo, setCustomRollNo] = useState('');
-  const [customOrg, setCustomOrg] = useState('CSE Department, Aditya University');
+  const [customOrg, setCustomOrg] = useState('TYPETEST Organization & Training Division');
 
   // Certificate Parameters
-  const [achievementTitle, setAchievementTitle] = useState('🏆 Personal Record Achievement (Milestone)');
-  const [testTitle, setTestTitle] = useState('Technical Touch Typing Benchmark Assessment');
-  const [wpm, setWpm] = useState('65');
+  const [certTitle, setCertTitle] = useState('Certificate of Achievement');
+  const [achievementTitle, setAchievementTitle] = useState('🏆 Speed & Accuracy Typing Milestone');
+  const [testTitle, setTestTitle] = useState('Professional Touch Typing Speed Benchmark');
+  const [wpm, setWpm] = useState('75');
   const [accuracy, setAccuracy] = useState('98');
-  const [issuingAuthority, setIssuingAuthority] = useState('Pavan B (Lead Mentor & Proctor), CSE Dept');
+  const [issuingAuthority, setIssuingAuthority] = useState('Alex Mercer');
+  const [issuerTitle, setIssuerTitle] = useState('Lead Evaluation Mentor');
+  const [secondarySigner, setSecondarySigner] = useState('TYPETEST Credential Council');
+  const [secondaryTitle, setSecondaryTitle] = useState('Director of Certification');
   const [issueDate, setIssueDate] = useState(() => new Date().toISOString().substring(0, 10));
-  const [template, setTemplate] = useState<'modern' | 'classic'>('modern');
+  const [template, setTemplate] = useState<'modern' | 'classic' | 'minimal' | 'corporate'>('modern');
 
   // Preview & Export State
   const [previewMode, setPreviewMode] = useState(false);
@@ -60,10 +64,10 @@ export const CertificateGeneratorModal: React.FC<CertificateGeneratorModalProps>
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
 
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`${effectiveName.replace(/\s+/g, '_')}_Official_Certificate.pdf`);
+      pdf.save(`${effectiveName.replace(/\s+/g, '_')}_TYPETEST_Certificate.pdf`);
 
-      const certNumber = `AU-DOTT-${new Date().getFullYear()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-      const verifyCode = `AU-V-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+      const certNumber = `TT-${new Date().getFullYear()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+      const verifyCode = `TT-V-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 
       const newCert: StudentCertificate = {
         id: `cert-manual-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -75,10 +79,17 @@ export const CertificateGeneratorModal: React.FC<CertificateGeneratorModalProps>
         accuracy: Number(accuracy) || 0,
         testTitle,
         issuedAt: new Date(issueDate || Date.now()).toISOString(),
-        issuingAuthority,
+        issuingAuthority: customOrg || 'TYPETEST Verification Authority',
         verificationCode: verifyCode,
         certificateNumber: certNumber,
-        status: 'valid'
+        status: 'valid',
+        organizationName: customOrg,
+        certificateTitle: certTitle,
+        primarySignerName: issuingAuthority,
+        primarySignerTitle: issuerTitle,
+        secondarySignerName: secondarySigner,
+        secondarySignerTitle: secondaryTitle,
+        template
       };
 
       onGenerate(newCert);
@@ -101,16 +112,16 @@ export const CertificateGeneratorModal: React.FC<CertificateGeneratorModalProps>
             </div>
             <div>
               <h2 className="text-lg font-black text-slate-100 flex items-center gap-2">
-                Mentor Certificate Generator Module
+                Custom Certificate Designer & Issuer
               </h2>
               <p className="text-xs text-slate-400">
-                Generate official verified typing credentials from testType & DOTT, Aditya University.
+                Design and issue official verified typing credentials for learners, teams, or classes.
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-xl transition-colors"
+            className="p-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
           >
             <X size={18} />
           </button>
@@ -120,59 +131,50 @@ export const CertificateGeneratorModal: React.FC<CertificateGeneratorModalProps>
         <div className="p-6 overflow-y-auto flex-1 flex flex-col">
           {!previewMode ? (
             <div className="space-y-6">
-              {/* Step 1: Candidate Selection Mode */}
+              {/* Step 1: Candidate Selection */}
               <div className="space-y-3">
-                <span className="text-[11px] font-mono uppercase tracking-wider text-slate-400 font-bold block">
-                  1. Candidate Recipient
-                </span>
-                <div className="grid grid-cols-2 gap-3">
+                <label className="text-xs font-mono font-bold uppercase tracking-wider text-slate-400 block">
+                  1. Recipient Selection
+                </label>
+                <div className="flex gap-3">
                   <button
                     type="button"
                     onClick={() => setCandidateMode('enrolled')}
-                    className={`p-3.5 rounded-2xl border text-left flex items-center gap-3 transition-all ${
+                    className={`flex-1 p-3 rounded-2xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
                       candidateMode === 'enrolled'
-                        ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300'
-                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                        ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    <UserCheck className="w-4 h-4 shrink-0" />
-                    <div>
-                      <div className="font-bold text-xs">Enrolled Student Roster</div>
-                      <div className="text-[11px] text-slate-500">Select from active institutional classes</div>
-                    </div>
+                    <UserCheck className="w-4 h-4" />
+                    <span>Select Enrolled Learner</span>
                   </button>
-
                   <button
                     type="button"
                     onClick={() => setCandidateMode('custom')}
-                    className={`p-3.5 rounded-2xl border text-left flex items-center gap-3 transition-all ${
+                    className={`flex-1 p-3 rounded-2xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
                       candidateMode === 'custom'
-                        ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300'
-                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                        ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    <Sparkles className="w-4 h-4 shrink-0" />
-                    <div>
-                      <div className="font-bold text-xs">Any Candidate / External Name</div>
-                      <div className="text-[11px] text-slate-500">Issue to any person or external candidate</div>
-                    </div>
+                    <Sparkles className="w-4 h-4" />
+                    <span>Custom Name & Identifier</span>
                   </button>
                 </div>
 
                 {candidateMode === 'enrolled' ? (
                   <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                      Select Enrolled Student
-                    </label>
+                    <label className="text-xs text-slate-400 block mb-1">Select Candidate from Roster</label>
                     <select
                       value={selectedStudentId}
                       onChange={e => setSelectedStudentId(e.target.value)}
-                      className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-slate-200 focus:border-emerald-500 focus:outline-none text-sm"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3 text-xs text-slate-200 focus:outline-none focus:border-emerald-500/60 font-mono"
                     >
-                      <option value="">-- Choose Candidate from Institutional Roster --</option>
+                      <option value="">-- Choose Learner --</option>
                       {students.map(s => (
                         <option key={s.id} value={s.id}>
-                          {s.name} ({s.rollNo}) - {s.batch}
+                          {s.name} ({s.rollNo || s.email})
                         </option>
                       ))}
                     </select>
@@ -180,356 +182,233 @@ export const CertificateGeneratorModal: React.FC<CertificateGeneratorModalProps>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                        Candidate Full Name *
-                      </label>
+                      <label className="text-xs text-slate-400 block mb-1">Full Name</label>
                       <input
                         type="text"
-                        placeholder="e.g. Pranav Vedula"
                         value={customName}
                         onChange={e => setCustomName(e.target.value)}
-                        className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-slate-200 focus:border-emerald-500 focus:outline-none text-sm"
+                        placeholder="e.g. John Doe"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3 text-xs text-slate-200 focus:outline-none focus:border-emerald-500/60"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                        Roll / Registration / ID Number
-                      </label>
+                      <label className="text-xs text-slate-400 block mb-1">Roll / Member ID (Optional)</label>
                       <input
                         type="text"
-                        placeholder="e.g. 24B11CS355"
                         value={customRollNo}
                         onChange={e => setCustomRollNo(e.target.value)}
-                        className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-slate-200 focus:border-emerald-500 focus:outline-none text-sm font-mono uppercase"
+                        placeholder="e.g. EMP-1049 or Member #42"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3 text-xs text-slate-200 focus:outline-none focus:border-emerald-500/60 font-mono"
                       />
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* Step 2: Assessment & Achievement Details */}
-              <div className="space-y-3 pt-3 border-t border-slate-800">
-                <span className="text-[11px] font-mono uppercase tracking-wider text-slate-400 font-bold block">
-                  2. Credential Title & Assessment Type
-                </span>
-
+              {/* Step 2: Organization & Template */}
+              <div className="space-y-3 pt-4 border-t border-slate-800">
+                <label className="text-xs font-mono font-bold uppercase tracking-wider text-slate-400 block">
+                  2. Organization & Visual Theme
+                </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                      Achievement / Milestone Title
-                    </label>
+                    <label className="text-xs text-slate-400 block mb-1">Issuing Organization Name</label>
                     <input
                       type="text"
-                      value={achievementTitle}
-                      onChange={e => setAchievementTitle(e.target.value)}
-                      className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-slate-200 focus:border-emerald-500 focus:outline-none text-sm"
+                      value={customOrg}
+                      onChange={e => setCustomOrg(e.target.value)}
+                      placeholder="e.g. Acme Corp, Apex High School, TYPETEST"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3 text-xs text-slate-200 focus:outline-none focus:border-emerald-500/60"
                     />
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {[
-                        'Master Touch Typist Benchmark',
-                        'Grand Master Speed Certification',
-                        'Proctored Assessment Distinction',
-                        'Elite Velocity & Precision Mastery'
-                      ].map(preset => (
-                        <button
-                          key={preset}
-                          type="button"
-                          onClick={() => setAchievementTitle(preset)}
-                          className="text-[10px] px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
-                        >
-                          {preset}
-                        </button>
-                      ))}
-                    </div>
                   </div>
-
                   <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                      Assessment / Course Title
-                    </label>
+                    <label className="text-xs text-slate-400 block mb-1">Certificate Title</label>
                     <input
                       type="text"
-                      value={testTitle}
-                      onChange={e => setTestTitle(e.target.value)}
-                      className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-slate-200 focus:border-emerald-500 focus:outline-none text-sm"
+                      value={certTitle}
+                      onChange={e => setCertTitle(e.target.value)}
+                      placeholder="e.g. Certificate of Achievement, Typing Honors"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3 text-xs text-slate-200 focus:outline-none focus:border-emerald-500/60"
                     />
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {[
-                        'Technical Touch Typing Benchmark Assessment',
-                        'Standard Velocity & Accuracy Proctored Exam',
-                        'Story: The Silicon Dawn Speed Test',
-                        'Professional Programmer Typing Proficiency'
-                      ].map(preset => (
-                        <button
-                          key={preset}
-                          type="button"
-                          onClick={() => setTestTitle(preset)}
-                          className="text-[10px] px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
-                        >
-                          {preset}
-                        </button>
-                      ))}
-                    </div>
                   </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                  {(['modern', 'classic', 'minimal', 'corporate'] as const).map(t => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setTemplate(t)}
+                      className={`p-2.5 rounded-xl border text-xs capitalize font-bold transition-all cursor-pointer ${
+                        template === t
+                          ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      {t} Template
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              {/* Step 3: Verified Performance Metrics & Issuing Authority */}
-              <div className="space-y-3 pt-3 border-t border-slate-800">
-                <span className="text-[11px] font-mono uppercase tracking-wider text-slate-400 font-bold block">
-                  3. Performance Metrics & Issuance Authority
-                </span>
+              {/* Step 3: Performance & Signatures */}
+              <div className="space-y-3 pt-4 border-t border-slate-800">
+                <label className="text-xs font-mono font-bold uppercase tracking-wider text-slate-400 block">
+                  3. Performance Benchmarks & Signatures
+                </label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                      Verified Speed (WPM)
-                    </label>
+                    <label className="text-xs text-slate-400 block mb-1">Net Speed (WPM)</label>
                     <input
                       type="number"
                       value={wpm}
                       onChange={e => setWpm(e.target.value)}
-                      className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-emerald-400 font-mono font-bold focus:border-emerald-500 focus:outline-none text-sm"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-2.5 text-xs text-emerald-400 font-mono font-bold focus:outline-none focus:border-emerald-500/60"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                      Verified Accuracy (%)
-                    </label>
+                    <label className="text-xs text-slate-400 block mb-1">Accuracy (%)</label>
                     <input
                       type="number"
                       value={accuracy}
                       onChange={e => setAccuracy(e.target.value)}
-                      className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-emerald-400 font-mono font-bold focus:border-emerald-500 focus:outline-none text-sm"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-2.5 text-xs text-amber-400 font-mono font-bold focus:outline-none focus:border-emerald-500/60"
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                      Issue Date (IST)
-                    </label>
+                  <div className="col-span-2">
+                    <label className="text-xs text-slate-400 block mb-1">Achievement Citation</label>
                     <input
-                      type="date"
-                      value={issueDate}
-                      onChange={e => setIssueDate(e.target.value)}
-                      className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-slate-200 focus:border-emerald-500 focus:outline-none text-sm font-mono"
+                      type="text"
+                      value={achievementTitle}
+                      onChange={e => setAchievementTitle(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500/60"
                     />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                      Visual Style
-                    </label>
-                    <select
-                      value={template}
-                      onChange={e => setTemplate(e.target.value as any)}
-                      className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-slate-200 focus:border-emerald-500 focus:outline-none text-sm"
-                    >
-                      <option value="modern">Modern Emerald Prestige</option>
-                      <option value="classic">Classic Academic White</option>
-                    </select>
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    Lead Mentor / Examiner Name & Designation
-                  </label>
-                  <input
-                    type="text"
-                    value={issuingAuthority}
-                    onChange={e => setIssuingAuthority(e.target.value)}
-                    className="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-slate-200 focus:border-emerald-500 focus:outline-none text-sm"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1">Primary Signer Name</label>
+                    <input
+                      type="text"
+                      value={issuingAuthority}
+                      onChange={e => setIssuingAuthority(e.target.value)}
+                      placeholder="e.g. Alex Mercer"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500/60"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1">Primary Signer Title</label>
+                    <input
+                      type="text"
+                      value={issuerTitle}
+                      onChange={e => setIssuerTitle(e.target.value)}
+                      placeholder="e.g. Head of Training & Assessments"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500/60"
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* Preview Button */}
-              <div className="pt-4 border-t border-slate-800 flex justify-end">
+              <div className="pt-4 flex justify-end">
                 <button
                   type="button"
-                  onClick={() => setPreviewMode(true)}
                   disabled={!canProceed}
-                  className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-black rounded-2xl shadow-lg shadow-emerald-500/20 text-sm transition-all flex items-center gap-2"
+                  onClick={() => setPreviewMode(true)}
+                  className="px-6 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-slate-950 font-bold text-xs transition-all shadow-lg shadow-emerald-500/20 cursor-pointer"
                 >
-                  <span>Preview & Review Certificate</span>
-                  <Award className="w-4 h-4" />
+                  Preview Certificate Design
                 </button>
               </div>
             </div>
           ) : (
-            <div className="flex-1 flex flex-col items-center space-y-6">
-              <div className="w-full overflow-x-auto p-4 bg-slate-950 rounded-2xl flex justify-center border border-slate-800">
-                {/* Certificate Render Area for HTML2Canvas & PDF */}
+            /* Certificate Preview */
+            <div className="space-y-6 flex flex-col items-center">
+              <div className="w-full overflow-x-auto flex justify-center py-2">
                 <div
                   ref={certRef}
-                  className={`w-[840px] h-[590px] relative p-10 flex flex-col justify-between items-center text-center rounded-2xl shadow-2xl border-4 ${
-                    template === 'modern'
-                      ? 'bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 border-emerald-500/60'
-                      : 'bg-white text-slate-900 border-emerald-600'
+                  className={`w-full max-w-2xl bg-slate-950 border-[6px] rounded-2xl p-8 sm:p-10 text-center relative overflow-hidden shadow-2xl ${
+                    template === 'classic'
+                      ? 'border-amber-600/70 text-amber-100'
+                      : template === 'minimal'
+                      ? 'border-slate-700 text-slate-100'
+                      : 'border-emerald-500/50 text-slate-100'
                   }`}
+                  style={{
+                    backgroundImage: 'radial-gradient(ellipse at 50% 10%, rgba(16, 185, 129, 0.08) 0%, rgba(2, 6, 23, 0) 70%)'
+                  }}
                 >
-                  {/* Decorative Outer Border */}
-                  <div
-                    className={`absolute inset-4 border-2 border-dashed pointer-events-none rounded-xl ${
-                      template === 'modern' ? 'border-emerald-400/30' : 'border-emerald-600/40'
-                    }`}
-                  />
+                  <div className="absolute inset-2 border border-emerald-500/25 rounded-xl pointer-events-none" />
 
                   {/* Header */}
-                  <div className="space-y-1.5 relative z-10 w-full">
-                    <div className="flex items-center justify-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-                        <Award className="w-6 h-6" />
-                      </div>
-                      <div className="text-left">
-                        <div className="text-sm font-black tracking-wider uppercase text-emerald-400">
-                          testType & DOTT
-                        </div>
-                        <div className={`text-[10px] font-semibold tracking-wide ${
-                          template === 'modern' ? 'text-slate-400' : 'text-slate-600'
-                        }`}>
-                          Department of Technical Training • Aditya University
-                        </div>
-                      </div>
-                    </div>
-
-                    <h1
-                      className={`text-2xl sm:text-3xl font-black font-serif tracking-wide pt-2 ${
-                        template === 'modern' ? 'text-slate-100' : 'text-slate-900'
-                      }`}
-                    >
-                      Certificate of Achievement
-                    </h1>
-                    <p
-                      className={`text-xs ${
-                        template === 'modern' ? 'text-slate-400' : 'text-slate-600'
-                      }`}
-                    >
-                      This is to certify that
-                    </p>
+                  <div className="space-y-1">
+                    <span className="text-xs font-mono font-extrabold uppercase tracking-widest text-emerald-400">
+                      {customOrg}
+                    </span>
+                    <h3 className="text-2xl sm:text-3xl font-black font-serif uppercase tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-400 to-amber-200">
+                      {certTitle}
+                    </h3>
+                    <p className="text-[11px] text-slate-400 italic">This certifies that</p>
                   </div>
 
-                  {/* Candidate Name */}
-                  <div className="relative z-10 py-1">
-                    <h2
-                      className={`text-3xl sm:text-4xl font-black font-serif tracking-tight ${
-                        template === 'modern' ? 'text-emerald-300' : 'text-emerald-800'
-                      }`}
-                    >
+                  {/* Recipient */}
+                  <div className="my-4 inline-block px-8 py-2 border-b-2 border-emerald-500/40">
+                    <h2 className="text-3xl font-black font-serif text-emerald-300">
                       {effectiveName}
                     </h2>
-                    <div
-                      className={`text-xs font-mono mt-1 ${
-                        template === 'modern' ? 'text-slate-400' : 'text-slate-600'
-                      }`}
-                    >
-                      Roll / ID No: <span className="font-bold">{effectiveRollNo}</span>
+                    <span className="text-[11px] font-mono text-slate-400 block mt-0.5">
+                      ID: {effectiveRollNo}
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-slate-300 max-w-md mx-auto leading-relaxed my-2">
+                    has achieved verified competency in technical touch-typing velocity, ergonomic pacing, and precision keystroke accuracy in <strong>{testTitle}</strong>.
+                  </p>
+
+                  <div className="inline-block px-4 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-bold text-xs my-2">
+                    {achievementTitle}
+                  </div>
+
+                  {/* Scores */}
+                  <div className="grid grid-cols-2 max-w-xs mx-auto gap-4 my-4 bg-slate-900/80 p-3 rounded-xl border border-slate-800 text-xs font-mono">
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-bold block">Speed</span>
+                      <span className="text-2xl font-black text-emerald-400">{wpm} WPM</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-bold block">Accuracy</span>
+                      <span className="text-2xl font-black text-amber-400">{accuracy}%</span>
                     </div>
                   </div>
 
-                  {/* Achievement text */}
-                  <div className="relative z-10 max-w-xl mx-auto space-y-2">
-                    <p
-                      className={`text-xs leading-relaxed ${
-                        template === 'modern' ? 'text-slate-300' : 'text-slate-700'
-                      }`}
-                    >
-                      has successfully demonstrated exceptional touch typing velocity, cadence, and accuracy in the evaluation of{' '}
-                      <strong>{testTitle}</strong>.
-                    </p>
-                    <div
-                      className={`inline-block px-4 py-1.5 rounded-xl font-bold text-xs ${
-                        template === 'modern'
-                          ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-300'
-                          : 'bg-emerald-100 border border-emerald-300 text-emerald-800'
-                      }`}
-                    >
-                      {achievementTitle}
-                    </div>
-                  </div>
-
-                  {/* Performance Metrics Badges */}
-                  <div className="grid grid-cols-2 gap-4 w-full max-w-md relative z-10">
-                    <div
-                      className={`p-3 rounded-xl border text-center ${
-                        template === 'modern'
-                          ? 'bg-slate-900/90 border-slate-800'
-                          : 'bg-slate-50 border-slate-200'
-                      }`}
-                    >
-                      <div
-                        className={`text-[10px] uppercase font-mono tracking-wider ${
-                          template === 'modern' ? 'text-slate-400' : 'text-slate-500'
-                        }`}
-                      >
-                        Typing Speed
-                      </div>
-                      <div className="text-2xl font-black font-mono text-emerald-400">
-                        {wpm} <span className="text-xs font-sans text-slate-400 font-normal">WPM</span>
-                      </div>
-                    </div>
-                    <div
-                      className={`p-3 rounded-xl border text-center ${
-                        template === 'modern'
-                          ? 'bg-slate-900/90 border-slate-800'
-                          : 'bg-slate-50 border-slate-200'
-                      }`}
-                    >
-                      <div
-                        className={`text-[10px] uppercase font-mono tracking-wider ${
-                          template === 'modern' ? 'text-slate-400' : 'text-slate-500'
-                        }`}
-                      >
-                        Accuracy Score
-                      </div>
-                      <div className="text-2xl font-black font-mono text-emerald-400">
-                        {accuracy}%
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Signatures & Footer */}
-                  <div className="w-full flex justify-between items-end pt-4 border-t border-slate-800/80 relative z-10 px-4">
-                    <div className="text-left">
-                      <div className="font-serif italic font-bold text-sm text-emerald-400">
-                        {issuingAuthority}
-                      </div>
-                      <div className="text-[10px] text-slate-400 font-medium">
-                        Mentor & Assessment Lead
-                      </div>
-                      <div className="text-[9px] text-slate-500 font-mono mt-0.5">
-                        Issued: {formatISTDateOnly(issueDate)} (IST)
-                      </div>
+                  {/* Signatures */}
+                  <div className="pt-4 mt-2 border-t border-slate-800/80 grid grid-cols-3 items-end text-[11px] font-mono text-slate-400">
+                    <div className="text-left space-y-0.5">
+                      <div className="font-serif italic font-bold text-slate-200 text-xs">{issuingAuthority}</div>
+                      <div className="h-[1px] w-20 bg-slate-700" />
+                      <div className="text-[10px] text-slate-300">{issuerTitle}</div>
                     </div>
 
-                    <div className="text-center px-4">
-                      <div className="w-10 h-10 mx-auto rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mb-1">
-                        <ShieldCheck className="w-5 h-5" />
-                      </div>
-                      <div className="text-[9px] font-mono text-emerald-400/90">
-                        AU-DOTT-VERIFIED
-                      </div>
+                    <div className="flex flex-col items-center justify-center">
+                      <ShieldCheck className="w-5 h-5 text-emerald-400 mb-0.5" />
+                      <span className="text-[8px] font-bold text-emerald-400 tracking-wider">TYPETEST VERIFIED</span>
                     </div>
 
-                    <div className="text-right">
-                      <div className="font-serif italic font-bold text-sm text-emerald-400">
-                        Dr. G Ramu
-                      </div>
-                      <div className="text-[10px] text-slate-400 font-medium">
-                        Dean Technical Trainings
-                      </div>
-                      <div className="text-[9px] text-slate-500 font-medium">
-                        Aditya University
-                      </div>
+                    <div className="text-right space-y-0.5">
+                      <div className="font-serif italic font-bold text-amber-300 text-xs">{secondarySigner}</div>
+                      <div className="h-[1px] w-20 bg-slate-700 ml-auto" />
+                      <div className="text-[10px] text-slate-300">{secondaryTitle}</div>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Action Buttons */}
+              {/* Actions */}
               <div className="flex gap-3 justify-end w-full">
                 <button
                   type="button"
                   onClick={() => setPreviewMode(false)}
-                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition-colors"
+                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
                 >
                   Back to Editor
                 </button>
@@ -537,7 +416,7 @@ export const CertificateGeneratorModal: React.FC<CertificateGeneratorModalProps>
                   type="button"
                   onClick={handleGenerate}
                   disabled={isGenerating}
-                  className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-emerald-500/20 flex items-center gap-2 transition-colors"
+                  className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-emerald-500/20 flex items-center gap-2 transition-colors cursor-pointer"
                 >
                   {isGenerating ? (
                     <span>Generating PDF...</span>

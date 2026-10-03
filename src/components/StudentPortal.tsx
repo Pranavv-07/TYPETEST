@@ -40,16 +40,19 @@ interface StudentPortalProps {
   onOpenPractice: () => void;
   onOpenMultiplayer?: () => void;
   onOpenAcademy?: () => void;
+  onOpenVerification?: (certId: string) => void;
 }
 
 export const StudentPortal: React.FC<StudentPortalProps> = ({
   onStartAssessment,
   onOpenPractice,
   onOpenMultiplayer,
-  onOpenAcademy
+  onOpenAcademy,
+  onOpenVerification
 }) => {
   const { currentUser, classes, tests, submissions, certificates } = useApp();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'achievements' | 'biometrics' | 'assigned' | 'leaderboard' | 'history' | 'certificates'>('dashboard');
+  const [assignedSubFilter, setAssignedSubFilter] = useState<'all' | 'active' | 'upcoming' | 'completed' | 'expired'>('all');
   const [selectedCertificate, setSelectedCertificate] = useState<StudentCertificate | null>(null);
   const [selectedLeaderboardTest, setSelectedLeaderboardTest] = useState<TypingTest | null>(null);
 
@@ -61,20 +64,21 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
   const now = getServerDate();
 
   // Filter assigned tests:
-  // 1. Must be assigned to this student specifically OR their enrolled class OR all classes
+  // Strictly tests assigned to this student specifically OR their enrolled class OR all classes
   const visibleAssignedTests = tests.filter(t => {
-    const isAssignedToStudent =
-      (t.assignedStudentIds && currentUser && t.assignedStudentIds.includes(currentUser.id)) ||
-      (t.assignedClassIds && (
-        (currentUser?.classId && t.assignedClassIds.includes(currentUser.classId)) ||
-        (studentClass && t.assignedClassIds.includes(studentClass.id)) ||
-        t.assignedClassIds.includes('all')
-      )) ||
-      (!t.assignedClassIds || t.assignedClassIds.length === 0);
+    if (!currentUser) return false;
 
-    if (!isAssignedToStudent) return false;
+    if (t.assignedStudentIds && t.assignedStudentIds.includes(currentUser.id)) {
+      return true;
+    }
 
-    return true;
+    if (t.assignedClassIds && t.assignedClassIds.length > 0) {
+      if (t.assignedClassIds.includes('all')) return true;
+      if (currentUser?.classId && t.assignedClassIds.includes(currentUser.classId)) return true;
+      if (studentClass && t.assignedClassIds.includes(studentClass.id)) return true;
+    }
+
+    return false;
   });
 
   // Filter submissions by this student
@@ -140,7 +144,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-100">{currentUser?.name}</h1>
           <p className="text-xs text-slate-400">
-            Department of Technical Training (DOTT) • <strong className="text-slate-200">{studentClass?.name || 'CSE Alpha (2024-28)'}</strong>
+            Enrolled Cohort • <strong className="text-slate-200">{studentClass?.name || 'Standard Cohort'}</strong>
           </p>
         </div>
 
@@ -369,134 +373,256 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
       </div>
 
       {/* TAB 1: ASSIGNED ASSESSMENTS */}
-      {activeTab === 'assigned' && (
-        <div className="space-y-4">
-          <div className="p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-2xl text-xs text-slate-300 flex items-start gap-3">
-            <GraduationCap className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-            <div>
-              <strong>Trainer Scheduled Tests:</strong> These tests are assigned directly by your faculty. Anti-cheat monitoring is active — copying, pasting, and window switching are audited. Custom tests can be attempted <strong>only once</strong> within their active time window (in IST).
+      {activeTab === 'assigned' && (() => {
+        const testsWithStatus = visibleAssignedTests.map(test => {
+          const previousAttempt = studentSubmissions.find(s => s.testId === test.id);
+          const hasCompleted = Boolean(previousAttempt);
+          const isSingleAttempt = Boolean(test.isCustomAssignment);
+          const isUpcoming = Boolean(test.startAt && new Date(test.startAt).getTime() > now.getTime());
+          const isExpired = Boolean(test.endAt && new Date(test.endAt).getTime() < now.getTime());
+          const canStart = !isUpcoming && !isExpired && (!isSingleAttempt || !hasCompleted);
+          const wordCount = (test.content.match(/\s*\S+/g) || []).length;
+
+          let statusCategory: 'active' | 'upcoming' | 'completed' | 'expired' = 'active';
+          if (hasCompleted) statusCategory = 'completed';
+          else if (isUpcoming) statusCategory = 'upcoming';
+          else if (isExpired) statusCategory = 'expired';
+
+          return {
+            test,
+            previousAttempt,
+            hasCompleted,
+            isSingleAttempt,
+            isUpcoming,
+            isExpired,
+            canStart,
+            wordCount,
+            statusCategory
+          };
+        });
+
+        const activeCount = testsWithStatus.filter(t => t.statusCategory === 'active').length;
+        const upcomingCount = testsWithStatus.filter(t => t.statusCategory === 'upcoming').length;
+        const completedCount = testsWithStatus.filter(t => t.statusCategory === 'completed').length;
+        const expiredCount = testsWithStatus.filter(t => t.statusCategory === 'expired').length;
+
+        const filteredList = testsWithStatus.filter(t => {
+          if (assignedSubFilter === 'all') return true;
+          return t.statusCategory === assignedSubFilter;
+        });
+
+        return (
+          <div className="space-y-4">
+            <div className="p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-2xl text-xs text-slate-300 flex items-start gap-3">
+              <GraduationCap className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+              <div>
+                <strong>Trainer & Institutional Assessments:</strong> These tests are assigned directly by your trainer or organization. Anti-cheat monitoring is active — copying, pasting, and window switching are audited. Custom tests can be attempted <strong>only once</strong> within their active time window (in IST).
+              </div>
             </div>
-          </div>
 
-          {visibleAssignedTests.length > 0 ? (
-            <div className="grid gap-4 md:grid-cols-2">
-              {visibleAssignedTests.map(test => {
-                const previousAttempt = studentSubmissions.find(s => s.testId === test.id);
-                const hasCompleted = Boolean(previousAttempt);
-                const isExpired = test.endAt && new Date(test.endAt) < now;
-                const canStart = !hasCompleted && !isExpired;
+            {/* Sub-category Filter Tabs */}
+            <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-3">
+              <button
+                onClick={() => setAssignedSubFilter('all')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
+                  assignedSubFilter === 'all'
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                All Assigned ({testsWithStatus.length})
+              </button>
+              <button
+                onClick={() => setAssignedSubFilter('active')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
+                  assignedSubFilter === 'active'
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Active ({activeCount})
+              </button>
+              <button
+                onClick={() => setAssignedSubFilter('upcoming')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
+                  assignedSubFilter === 'upcoming'
+                    ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Upcoming ({upcomingCount})
+              </button>
+              <button
+                onClick={() => setAssignedSubFilter('completed')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
+                  assignedSubFilter === 'completed'
+                    ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Completed ({completedCount})
+              </button>
+              <button
+                onClick={() => setAssignedSubFilter('expired')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
+                  assignedSubFilter === 'expired'
+                    ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Expired ({expiredCount})
+              </button>
+            </div>
 
-                return (
-                  <div
-                    key={test.id}
-                    className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl p-5 space-y-4 flex flex-col justify-between transition-all shadow-lg"
-                  >
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-mono uppercase font-bold tracking-wider bg-slate-800 text-slate-300">
-                            {test.category}
-                          </span>
-                          {test.isCustomAssignment && (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                              Single Attempt Exam
+            {filteredList.length > 0 ? (
+              <div className="grid gap-4 md:grid-cols-2">
+                {filteredList.map(({ test, previousAttempt, hasCompleted, isSingleAttempt, isUpcoming, isExpired, canStart, wordCount, statusCategory }) => {
+                  return (
+                    <div
+                      key={test.id}
+                      className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl p-5 space-y-4 flex flex-col justify-between transition-all shadow-lg"
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-mono uppercase font-bold tracking-wider bg-slate-800 text-slate-300">
+                              {test.category}
                             </span>
-                          )}
-                          {test.language && test.language !== 'none' && (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-950 text-emerald-300 border border-emerald-800">
-                              {test.language}
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-mono capitalize ${
+                              test.difficulty === 'easy'
+                                ? 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20'
+                                : test.difficulty === 'hard'
+                                ? 'text-rose-400 bg-rose-500/10 border border-rose-500/20'
+                                : 'text-amber-400 bg-amber-500/10 border border-amber-500/20'
+                            }`}>
+                              {test.difficulty || 'medium'}
                             </span>
-                          )}
-                        </div>
-
-                        <span className="text-[11px] font-mono text-slate-400 flex items-center gap-1">
-                          <Clock className="w-3.5 h-3.5 text-slate-500" />
-                          {test.timeLimit}s limit
-                        </span>
-                      </div>
-
-                      <h3 className="text-base font-bold text-slate-100">{test.title}</h3>
-                      <p className="text-xs text-slate-400 line-clamp-2">{test.description || 'Proctored test module.'}</p>
-
-                      {/* Time Window Notice (IST) */}
-                      {test.endAt && (
-                        <div className="text-[11px] font-mono text-amber-300/90 bg-amber-500/10 p-2 rounded-lg border border-amber-500/20 flex items-center gap-1.5">
-                          <Calendar className="w-3.5 h-3.5 text-amber-400" />
-                          <span>Deadline: {formatISTDateTime(test.endAt)}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Criteria and Action button */}
-                    <div className="space-y-3 pt-3 border-t border-slate-800">
-                      <div className="flex items-center justify-between text-xs font-mono">
-                        <span className="text-slate-500">Min Accuracy Target:</span>
-                        <span className="font-bold text-emerald-400">{test.minAccuracy}%</span>
-                      </div>
-
-                      {hasCompleted && previousAttempt && (
-                        <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs font-mono">
-                          <span className="text-slate-400">Attempt Recorded:</span>
-                          <span className="text-emerald-400 font-bold">
-                            {previousAttempt.netWpm} WPM ({previousAttempt.accuracy}%)
-                          </span>
-                        </div>
-                      )}
-
-                      <div className="flex items-center gap-2">
-                        {canStart ? (
-                          <button
-                            onClick={() => onStartAssessment(test)}
-                            className="flex-1 py-2.5 rounded-xl font-bold text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-all flex items-center justify-center gap-2 shadow-md shadow-emerald-500/10 cursor-pointer"
-                          >
-                            <Play className="w-4 h-4 fill-current" />
-                            <span>Start Test</span>
-                          </button>
-                        ) : hasCompleted ? (
-                          <div className="flex-1 flex items-center gap-2">
-                            <div className="flex-1 py-2 rounded-xl text-xs font-semibold bg-slate-800/80 text-emerald-400 border border-slate-700/60 flex items-center justify-center gap-1.5">
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span>Attempt Submitted</span>
-                            </div>
-                            <button
-                              onClick={() => setSelectedLeaderboardTest(test)}
-                              className="px-3 py-2 rounded-xl text-xs font-bold bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-500/30 flex items-center gap-1.5 transition-colors cursor-pointer"
-                            >
-                              <Trophy className="w-3.5 h-3.5" />
-                              <span>Leaderboard</span>
-                            </button>
+                            {test.isCustomAssignment && (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                Single Attempt
+                              </span>
+                            )}
+                            {test.language && test.language !== 'none' && (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-950 text-emerald-300 border border-emerald-800">
+                                {test.language}
+                              </span>
+                            )}
                           </div>
-                        ) : (
-                          <div className="w-full py-2.5 rounded-xl font-semibold text-xs bg-slate-800 text-slate-500 text-center flex items-center justify-center gap-1.5">
-                            <Lock className="w-3.5 h-3.5" />
-                            <span>Test Window Expired</span>
+
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase ${
+                              statusCategory === 'completed'
+                                ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                                : statusCategory === 'upcoming'
+                                ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                                : statusCategory === 'expired'
+                                ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                                : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            }`}>
+                              {statusCategory}
+                            </span>
+                            <span className="text-[11px] font-mono text-slate-400 flex items-center gap-1">
+                              <Clock className="w-3.5 h-3.5 text-slate-500" />
+                              {test.timeLimit}s
+                            </span>
+                          </div>
+                        </div>
+
+                        <h3 className="text-base font-bold text-slate-100">{test.title}</h3>
+                        <p className="text-xs text-slate-400 line-clamp-2">{test.description || 'Proctored test module.'}</p>
+
+                        <div className="flex items-center gap-4 text-[11px] font-mono text-slate-400">
+                          <span>Word Count: <strong className="text-slate-200">{wordCount} words</strong></span>
+                          <span>Duration: <strong className="text-slate-200">{test.timeLimit}s</strong></span>
+                        </div>
+
+                        {/* Time Window Notice (IST) */}
+                        {test.endAt && (
+                          <div className="text-[11px] font-mono text-amber-300/90 bg-amber-500/10 p-2 rounded-lg border border-amber-500/20 flex items-center gap-1.5">
+                            <Calendar className="w-3.5 h-3.5 text-amber-400" />
+                            <span>Deadline: {formatISTDateTime(test.endAt)}</span>
                           </div>
                         )}
                       </div>
+
+                      {/* Criteria and Action button */}
+                      <div className="space-y-3 pt-3 border-t border-slate-800">
+                        <div className="flex items-center justify-between text-xs font-mono">
+                          <span className="text-slate-500">Min Accuracy Target:</span>
+                          <span className="font-bold text-emerald-400">{test.minAccuracy}%</span>
+                        </div>
+
+                        {hasCompleted && previousAttempt && (
+                          <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs font-mono">
+                            <span className="text-slate-400">Best Recorded Score:</span>
+                            <span className="text-emerald-400 font-bold">
+                              {previousAttempt.netWpm} WPM ({previousAttempt.accuracy}%)
+                            </span>
+                          </div>
+                        )}
+
+                        <div className="flex items-center gap-2">
+                          {canStart ? (
+                            <button
+                              onClick={() => onStartAssessment(test)}
+                              className="flex-1 py-2.5 rounded-xl font-bold text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-all flex items-center justify-center gap-2 shadow-md shadow-emerald-500/10 cursor-pointer"
+                            >
+                              <Play className="w-4 h-4 fill-current" />
+                              <span>{hasCompleted ? 'Retake Test' : 'Start Test'}</span>
+                            </button>
+                          ) : hasCompleted ? (
+                            <div className="flex-1 flex items-center gap-2">
+                              <div className="flex-1 py-2 rounded-xl text-xs font-semibold bg-slate-800/80 text-emerald-400 border border-slate-700/60 flex items-center justify-center gap-1.5">
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>Attempt Submitted</span>
+                              </div>
+                              <button
+                                onClick={() => setSelectedLeaderboardTest(test)}
+                                className="px-3 py-2 rounded-xl text-xs font-bold bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-500/30 flex items-center gap-1.5 transition-colors cursor-pointer"
+                              >
+                                <Trophy className="w-3.5 h-3.5" />
+                                <span>Leaderboard</span>
+                              </button>
+                            </div>
+                          ) : isUpcoming ? (
+                            <div className="w-full py-2.5 rounded-xl font-semibold text-xs bg-slate-800 text-blue-400 text-center flex items-center justify-center gap-1.5">
+                              <Clock className="w-3.5 h-3.5" />
+                              <span>Test Scheduled For Later</span>
+                            </div>
+                          ) : (
+                            <div className="w-full py-2.5 rounded-xl font-semibold text-xs bg-slate-800 text-slate-500 text-center flex items-center justify-center gap-1.5">
+                              <Lock className="w-3.5 h-3.5" />
+                              <span>Test Window Expired</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center space-y-3">
-              <div className="w-12 h-12 rounded-2xl bg-slate-800 mx-auto flex items-center justify-center text-slate-400">
-                <Code2 className="w-6 h-6" />
+                  );
+                })}
               </div>
-              <h3 className="text-base font-bold text-slate-200">No Assessments Active Right Now</h3>
-              <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                No examinations are scheduled right now for your batch. Practice in the Typing Arena or check back during your designated test window.
-              </p>
-              <button
-                onClick={onOpenPractice}
-                className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-500 text-slate-950 hover:bg-emerald-400 cursor-pointer"
-              >
-                Go to Practice Arena
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+            ) : (
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-slate-800 mx-auto flex items-center justify-center text-slate-400">
+                  <Code2 className="w-6 h-6" />
+                </div>
+                <h3 className="text-base font-bold text-slate-200">No Tests Found in this Category</h3>
+                <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                  No tests matching "{assignedSubFilter}" filter are currently assigned.
+                </p>
+                {assignedSubFilter !== 'all' && (
+                  <button
+                    onClick={() => setAssignedSubFilter('all')}
+                    className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-800 text-slate-200 hover:bg-slate-700 cursor-pointer"
+                  >
+                    View All ({visibleAssignedTests.length})
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* TAB 2: MY SUBMISSION HISTORY */}
       {activeTab === 'history' && (
@@ -566,7 +692,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
           <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-2xl text-xs text-slate-300 flex items-start gap-3">
             <Award className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
             <div>
-              <strong>DOTT Official Credentials:</strong> Certificates are issued by the Department of Technical Training (DOTT), Aditya University with verification signatures from Dr. G Ramu, Dean Technical Trainings.
+              <strong>Official Credentials:</strong> Certificates are issued by the TYPETEST Certification Authority with cryptographic verification and official tamper-evident seals.
             </div>
           </div>
 
@@ -587,7 +713,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
                 >
                   <div className="flex items-center justify-between">
                     <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                      DOTT Credential
+                      Verified Credential
                     </span>
                     <span className="text-xs font-mono text-slate-400">{formatISTDate(cert.issuedAt)}</span>
                   </div>
@@ -595,7 +721,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
                   <div>
                     <h3 className="text-lg font-bold text-slate-100">{cert.achievementTitle}</h3>
                     <p className="text-xs text-slate-400 mt-1">
-                      Department of Technical Training (DOTT), Aditya University
+                      TYPETEST Global Certification Authority
                     </p>
                   </div>
 
@@ -637,6 +763,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
           certificate={selectedCertificate}
           isOpen={Boolean(selectedCertificate)}
           onClose={() => setSelectedCertificate(null)}
+          onOpenVerification={onOpenVerification}
         />
       )}
 

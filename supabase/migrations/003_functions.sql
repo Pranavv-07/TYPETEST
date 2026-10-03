@@ -1,6 +1,6 @@
 -- ============================================================================
 -- TYPETEST INSTITUTIONAL TYPING EXAMINATION PLATFORM
--- Migration 003: High-Performance Atomic RPCs & Security Procedures
+-- Migration 003: Hardened Atomic RPCs & Security Procedures
 -- Guarantees atomic attempt creation, strict time windows, and server-side validation
 -- ============================================================================
 
@@ -136,8 +136,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 3. PERIODIC CHECKPOINT RPC (Low-overhead batching for 200+ concurrent students)
--- Called every 15-30s instead of every keystroke
+-- 3. PERIODIC CHECKPOINT RPC
 CREATE OR REPLACE FUNCTION checkpoint_test_attempt(
     p_attempt_id UUID,
     p_net_wpm NUMERIC,
@@ -153,6 +152,14 @@ RETURNS BOOLEAN AS $$
 DECLARE
     v_status TEXT;
 BEGIN
+    -- Server-side sanity checks
+    IF p_accuracy < 0 OR p_accuracy > 100 THEN
+        RETURN FALSE;
+    END IF;
+    IF p_net_wpm < 0 OR p_net_wpm > 350 THEN
+        RETURN FALSE;
+    END IF;
+
     SELECT status INTO v_status FROM attempts WHERE id = p_attempt_id;
     IF NOT FOUND THEN
         RETURN FALSE;
@@ -180,7 +187,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 4. RECORD PROCTORING VIOLATION
+-- 4. RECORD PROCTORING VIOLATION (Hardened with attempt-student verification)
 CREATE OR REPLACE FUNCTION record_violation(
     p_attempt_id UUID,
     p_student_id UUID,
@@ -191,7 +198,17 @@ RETURNS JSONB AS $$
 DECLARE
     v_violation RECORD;
     v_now TIMESTAMPTZ := clock_timestamp();
+    v_attempt_exists BOOLEAN;
 BEGIN
+    -- Verify attempt matches student
+    SELECT EXISTS (
+        SELECT 1 FROM attempts WHERE id = p_attempt_id AND student_id = p_student_id
+    ) INTO v_attempt_exists;
+
+    IF NOT v_attempt_exists THEN
+        RAISE EXCEPTION 'ATTEMPT_MISMATCH: The specified attempt does not match the student candidate';
+    END IF;
+
     INSERT INTO violations (
         attempt_id,
         student_id,
@@ -218,7 +235,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 5. ATOMIC SUBMIT ATTEMPT & CERTIFICATION
+-- 5. ATOMIC SUBMIT ATTEMPT & CERTIFICATION (With Server Validation)
 CREATE OR REPLACE FUNCTION submit_test_attempt(
     p_attempt_id UUID,
     p_net_wpm NUMERIC,
@@ -240,8 +257,19 @@ DECLARE
     v_cert_no TEXT;
     v_verify_code TEXT;
     v_is_passed BOOLEAN := FALSE;
+    v_validated_net_wpm NUMERIC := p_net_wpm;
+    v_validated_raw_wpm NUMERIC := p_raw_wpm;
+    v_validated_accuracy NUMERIC := p_accuracy;
     v_result JSONB;
 BEGIN
+    -- Input boundaries validation
+    IF v_validated_accuracy < 0 OR v_validated_accuracy > 100 THEN
+        v_validated_accuracy := GREATEST(0, LEAST(100, v_validated_accuracy));
+    END IF;
+    IF v_validated_net_wpm < 0 OR v_validated_net_wpm > 350 THEN
+        v_validated_net_wpm := GREATEST(0, LEAST(350, v_validated_net_wpm));
+    END IF;
+
     SELECT * INTO v_attempt FROM attempts WHERE id = p_attempt_id FOR UPDATE;
     IF NOT FOUND THEN
         RAISE EXCEPTION 'ATTEMPT_NOT_FOUND';
@@ -258,7 +286,7 @@ BEGIN
     SELECT * INTO v_student FROM students WHERE id = v_attempt.student_id;
 
     -- Determine pass/fail
-    IF p_accuracy >= coalesce(v_test.min_accuracy, 90.0) AND p_net_wpm >= 20 THEN
+    IF v_validated_accuracy >= coalesce(v_test.min_accuracy, 90.0) AND v_validated_net_wpm >= 20 THEN
         v_is_passed := TRUE;
     END IF;
 
@@ -267,9 +295,9 @@ BEGIN
     SET
         status = 'submitted',
         submitted_at = v_now,
-        net_wpm = p_net_wpm,
-        raw_wpm = p_raw_wpm,
-        accuracy = p_accuracy,
+        net_wpm = v_validated_net_wpm,
+        raw_wpm = v_validated_raw_wpm,
+        accuracy = v_validated_accuracy,
         correct_characters = p_correct_characters,
         total_characters = p_total_characters,
         errors = p_errors,
@@ -302,8 +330,8 @@ BEGIN
             v_cert_no,
             v_verify_code,
             v_now,
-            p_net_wpm,
-            p_accuracy,
+            v_validated_net_wpm,
+            v_validated_accuracy,
             'valid'
         )
         RETURNING * INTO v_cert_record;
@@ -320,7 +348,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 6. RESET STUDENT ATTEMPT (Admin/Proctor Authorized)
+-- 6. RESET STUDENT ATTEMPT (Admin / Authorized Trainer Only)
 CREATE OR REPLACE FUNCTION reset_student_attempt(
     p_test_id UUID,
     p_student_id UUID,
@@ -330,8 +358,20 @@ CREATE OR REPLACE FUNCTION reset_student_attempt(
 )
 RETURNS BOOLEAN AS $$
 DECLARE
+    v_is_authorized BOOLEAN := FALSE;
     v_deleted_count INT := 0;
 BEGIN
+    -- Verify caller authorization
+    SELECT EXISTS (
+        SELECT 1 FROM admins WHERE id = p_admin_id AND status = 'active'
+    ) OR EXISTS (
+        SELECT 1 FROM trainers WHERE id = p_admin_id AND status = 'active'
+    ) INTO v_is_authorized;
+
+    IF NOT v_is_authorized THEN
+        RAISE EXCEPTION 'UNAUTHORIZED: Only an active Administrator or Trainer may authorize attempt resets';
+    END IF;
+
     DELETE FROM attempts
     WHERE test_id = p_test_id AND student_id = p_student_id;
 

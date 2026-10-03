@@ -1,6 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { Student, Trainer, TypingTest, Department, Batch, ClassRoom } from '../types';
+import { Student, Trainer, TypingTest, Department, Batch, ClassRoom, StudentCertificate } from '../types';
+import { ExcelStudentImportModal } from './ExcelStudentImportModal';
+import { CertificateModal } from './CertificateModal';
+import { formatISTDate, formatISTDateTime } from '../utils/dateUtils';
+import { downloadStudentImportTemplate, exportStudentsToExcel } from '../utils/excelUtils';
 import {
   Shield,
   Users,
@@ -31,14 +35,25 @@ import {
   X,
   Lock,
   Flame,
-  Clock
+  Clock,
+  ExternalLink,
+  ShieldCheck,
+  AlertTriangle
 } from 'lucide-react';
 import { checkDatabaseConnection, DatabaseConnectionStatus } from '../services/supabaseService';
 
-export const AdminPortal: React.FC = () => {
+interface AdminPortalProps {
+  onOpenVerification?: (certId: string) => void;
+}
+
+export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) => {
   const [dbStatus, setDbStatus] = useState<DatabaseConnectionStatus | null>(null);
   const [studentModalError, setStudentModalError] = useState('');
   const [bulkErrorMsg, setBulkErrorMsg] = useState('');
+  const [showExcelImportModal, setShowExcelImportModal] = useState(false);
+  const [selectedViewCert, setSelectedViewCert] = useState<StudentCertificate | null>(null);
+  const [adminCertSearch, setAdminCertSearch] = useState('');
+  const [adminCertStatusFilter, setAdminCertStatusFilter] = useState<'all' | 'valid' | 'revoked'>('all');
 
   useEffect(() => {
     checkDatabaseConnection().then(setDbStatus).catch(console.error);
@@ -76,6 +91,8 @@ export const AdminPortal: React.FC = () => {
     resetStudentAttempt,
     downloadReportCSV,
     generateTestReport,
+    updateCertificateStatus,
+    deleteCertificate,
     refreshData
   } = useApp();
 
@@ -90,10 +107,29 @@ export const AdminPortal: React.FC = () => {
     | 'attempts'
     | 'violations'
     | 'results'
+    | 'certificates'
     | 'audit'
     | 'import';
 
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+
+  const filteredAdminCertificates = useMemo(() => {
+    return certificates.filter(cert => {
+      if (adminCertStatusFilter !== 'all' && (cert.status || 'valid') !== adminCertStatusFilter) return false;
+      if (adminCertSearch.trim()) {
+        const q = adminCertSearch.toLowerCase();
+        return (
+          cert.studentName?.toLowerCase().includes(q) ||
+          cert.rollNo?.toLowerCase().includes(q) ||
+          cert.id?.toLowerCase().includes(q) ||
+          cert.verificationCode?.toLowerCase().includes(q) ||
+          cert.testTitle?.toLowerCase().includes(q) ||
+          cert.achievementTitle?.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [certificates, adminCertStatusFilter, adminCertSearch]);
 
   // Search & Filter state
   const [studentSearch, setStudentSearch] = useState('');
@@ -468,6 +504,7 @@ export const AdminPortal: React.FC = () => {
           { id: 'attempts', label: `Attempts (${submissions.length})`, icon: Activity },
           { id: 'violations', label: `Violations (${violations.length})`, icon: ShieldAlert },
           { id: 'results', label: 'Results & Reports', icon: Award },
+          { id: 'certificates', label: `Certificates (${certificates.length})`, icon: ShieldCheck },
           { id: 'audit', label: `Audit Logs (${auditLogs.length})`, icon: History },
           { id: 'import', label: 'Bulk Ingest', icon: FileSpreadsheet }
         ].map(tab => {
@@ -833,13 +870,39 @@ export const AdminPortal: React.FC = () => {
               </select>
             </div>
 
-            <button
-              onClick={() => setShowAddStudentModal(true)}
-              className="px-3 py-1.5 bg-cyan-500 text-slate-950 text-xs font-bold rounded-xl flex items-center gap-1"
-            >
-              <UserPlus className="w-3.5 h-3.5" />
-              <span>Add Student</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setShowExcelImportModal(true)}
+                className="px-3 py-1.5 bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>Bulk Excel Import</span>
+              </button>
+
+              <button
+                onClick={() => downloadStudentImportTemplate(classes.map(c => ({ id: c.id, name: c.name })), 'xlsx')}
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Template</span>
+              </button>
+
+              <button
+                onClick={() => exportStudentsToExcel(students)}
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5 text-amber-400" />
+                <span>Export</span>
+              </button>
+
+              <button
+                onClick={() => setShowAddStudentModal(true)}
+                className="px-3.5 py-1.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold rounded-xl flex items-center gap-1 shadow-md shadow-cyan-500/20 cursor-pointer"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>Add Student</span>
+              </button>
+            </div>
           </div>
 
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
@@ -1162,7 +1225,128 @@ export const AdminPortal: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 11: AUDIT LOGS */}
+      {/* TAB 11: CERTIFICATES & CREDENTIALS */}
+      {activeTab === 'certificates' && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+            <div className="flex gap-2 w-full sm:w-auto">
+              <div className="relative flex-1 sm:w-72">
+                <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
+                <input
+                  type="text"
+                  placeholder="Search certificate ID, candidate, roll..."
+                  value={adminCertSearch}
+                  onChange={e => setAdminCertSearch(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+              <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded-xl p-1 text-xs">
+                {(['all', 'valid', 'revoked'] as const).map(st => (
+                  <button
+                    key={st}
+                    onClick={() => setAdminCertStatusFilter(st)}
+                    className={`px-2.5 py-0.5 rounded-lg capitalize font-mono text-[11px] transition-colors cursor-pointer ${
+                      adminCertStatusFilter === st
+                        ? 'bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {st}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-950/80 text-slate-400 font-mono border-b border-slate-800 uppercase text-[10px]">
+                <tr>
+                  <th className="p-3">Certificate ID</th>
+                  <th className="p-3">Candidate</th>
+                  <th className="p-3">Roll / ID</th>
+                  <th className="p-3">Achievement</th>
+                  <th className="p-3 text-right">Net WPM</th>
+                  <th className="p-3 text-right">Accuracy</th>
+                  <th className="p-3 text-right">Issued Date (IST)</th>
+                  <th className="p-3 text-center">Status</th>
+                  <th className="p-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60 text-slate-200">
+                {filteredAdminCertificates.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="p-6 text-center text-slate-500 font-mono">
+                      No certificates matching query.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredAdminCertificates.map(c => {
+                    const isRev = c.status === 'revoked';
+                    return (
+                      <tr key={c.id} className="hover:bg-slate-800/40 transition-colors">
+                        <td className="p-3 font-mono font-bold text-cyan-400">{c.id || c.certificateNumber || c.verificationCode}</td>
+                        <td className="p-3 font-semibold">{c.studentName}</td>
+                        <td className="p-3 font-mono text-slate-400">{c.rollNo || '—'}</td>
+                        <td className="p-3 text-slate-300">{c.achievementTitle || c.testTitle}</td>
+                        <td className="p-3 text-right font-mono font-bold text-emerald-400">{c.wpm} WPM</td>
+                        <td className="p-3 text-right font-mono font-bold text-amber-400">{c.accuracy}%</td>
+                        <td className="p-3 text-right font-mono text-slate-400 text-[10px]">{formatISTDate(c.issuedAt)}</td>
+                        <td className="p-3 text-center">
+                          {isRev ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                              REVOKED
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                              VALID
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3 text-right space-x-1">
+                          <button
+                            onClick={() => setSelectedViewCert(c)}
+                            className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold cursor-pointer"
+                          >
+                            View
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (onOpenVerification) {
+                                onOpenVerification(c.id || c.verificationCode);
+                              }
+                            }}
+                            className="px-2 py-1 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 text-[11px] font-semibold cursor-pointer"
+                          >
+                            Verify
+                          </button>
+                          {isRev ? (
+                            <button
+                              onClick={() => updateCertificateStatus(c.id, 'valid')}
+                              className="px-2 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 text-[11px] font-semibold hover:bg-emerald-500/30 cursor-pointer"
+                            >
+                              Reactivate
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => updateCertificateStatus(c.id, 'revoked')}
+                              className="px-2 py-1 rounded-lg bg-rose-500/20 text-rose-300 text-[11px] font-semibold hover:bg-rose-500/30 cursor-pointer"
+                            >
+                              Revoke
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 12: AUDIT LOGS */}
       {activeTab === 'audit' && (
         <div className="space-y-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
@@ -1512,7 +1696,7 @@ export const AdminPortal: React.FC = () => {
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 mt-1"
                 />
                 <p className="text-[10px] text-slate-500 mt-1 font-mono">
-                  Default allowed passwords: Roll Number, 1234, or student123
+                  Set a secure access password for candidate login
                 </p>
               </div>
               <button
@@ -1623,7 +1807,7 @@ export const AdminPortal: React.FC = () => {
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 mt-1"
                 />
                 <p className="text-[10px] text-slate-500 mt-1 font-mono">
-                  Default login passwords supported: Roll number, 1234, or student123
+                  Specify a new password to update candidate access
                 </p>
               </div>
 
@@ -1767,7 +1951,7 @@ export const AdminPortal: React.FC = () => {
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 mt-1"
                 />
                 <p className="text-[10px] text-slate-500 mt-1 font-mono">
-                  Default trainer passwords supported: trainer123, trainer@123, or 1234
+                  Specify a new password to update trainer access
                 </p>
               </div>
 
@@ -1893,7 +2077,24 @@ export const AdminPortal: React.FC = () => {
         </div>
       )}
 
-      
+      {/* EXCEL / CSV BULK IMPORT MODAL */}
+      {showExcelImportModal && (
+        <ExcelStudentImportModal
+          isOpen={showExcelImportModal}
+          onClose={() => setShowExcelImportModal(false)}
+          allowedClasses={classes}
+        />
+      )}
+
+      {/* CERTIFICATE INSPECT MODAL */}
+      {selectedViewCert && (
+        <CertificateModal
+          certificate={selectedViewCert}
+          isOpen={Boolean(selectedViewCert)}
+          onClose={() => setSelectedViewCert(null)}
+          onOpenVerification={onOpenVerification}
+        />
+      )}
     </div>
   );
 };

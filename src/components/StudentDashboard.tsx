@@ -127,7 +127,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
           </p>
         </div>
         <span className="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20">
-          DOTT Verified Record
+          Verified Assessment Record
         </span>
       </div>
 

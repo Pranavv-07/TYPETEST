@@ -204,7 +204,7 @@ export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> =
         <div>
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-              Department of Technical Training (DOTT)
+              TYPETEST Academy Training Division
             </span>
             <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider ${
               globallyOpen ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' : 'bg-amber-500/20 text-amber-400 border border-amber-500/40'

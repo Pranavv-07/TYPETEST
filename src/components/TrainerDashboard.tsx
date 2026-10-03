@@ -13,14 +13,13 @@ import { LeaderboardModal } from './LeaderboardModal';
 import { ReportModal } from './ReportModal';
 import { CertificateGeneratorModal } from './CertificateGeneratorModal';
 import { CertificateModal } from './CertificateModal';
+import { ExcelStudentImportModal } from './ExcelStudentImportModal';
 import { TrainerAcademyManagement } from './academy/TrainerAcademyManagement';
 import { formatISTDateTime, formatISTDate } from '../utils/dateUtils';
 import {
   downloadStudentImportTemplate,
-  parseStudentSpreadsheet,
   exportStudentsToExcel,
-  exportSubmissionsToExcel,
-  ParsedStudentRow
+  exportSubmissionsToExcel
 } from '../utils/excelUtils';
 import {
   Users,
@@ -62,9 +61,10 @@ import {
 
 interface TrainerDashboardProps {
   onLaunchTest?: (test: TypingTest) => void;
+  onOpenVerification?: (certId: string) => void;
 }
 
-export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest }) => {
+export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest, onOpenVerification }) => {
   const {
     currentUser,
     classes,
@@ -83,6 +83,8 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
     reports,
     certificates,
     addCertificate,
+    updateCertificateStatus,
+    deleteCertificate,
     generateTestReport,
     deleteReport,
     resetStudentAttempt,
@@ -137,10 +139,10 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
 
   // Excel Bulk Import Modal
   const [showExcelImportModal, setShowExcelImportModal] = useState(false);
-  const [parsedRows, setParsedRows] = useState<ParsedStudentRow[]>([]);
-  const [isParsingExcel, setIsParsingExcel] = useState(false);
-  const [importSuccessMsg, setImportSuccessMsg] = useState('');
-  const [importErrorMsg, setImportErrorMsg] = useState('');
+
+  // Certificate Management Filters
+  const [certSearchQuery, setCertSearchQuery] = useState('');
+  const [certStatusFilter, setCertStatusFilter] = useState<'all' | 'valid' | 'revoked'>('all');
 
   // Class Management Modal
   const [showCreateClassModal, setShowCreateClassModal] = useState(false);
@@ -231,53 +233,6 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
     setEditingStudent(null);
   };
 
-  // Handle Excel Upload
-  const handleExcelFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsParsingExcel(true);
-    setImportErrorMsg('');
-    setImportSuccessMsg('');
-
-    try {
-      const result = await parseStudentSpreadsheet(file);
-      setParsedRows(result.rows);
-    } catch (err: any) {
-      setImportErrorMsg('Failed to parse Excel file. Please ensure it follows the template.');
-    } finally {
-      setIsParsingExcel(false);
-    }
-  };
-
-  // Commit Parsed Excel Students to Database
-  const handleCommitExcelImport = async () => {
-    const validRows = parsedRows.filter(r => r.isValid);
-    if (validRows.length === 0) return;
-
-    const toImport = validRows.map(r => ({
-      rollNo: r.rollNo,
-      name: r.name,
-      email: r.email,
-      classId: classes[0]?.id || '',
-      batch: r.batch,
-      status: r.status,
-      password: r.password || '1234'
-    }));
-
-    try {
-      await bulkAddStudents(toImport);
-      setImportSuccessMsg(`Successfully imported ${toImport.length} students into the database!`);
-      setTimeout(() => {
-        setShowExcelImportModal(false);
-        setParsedRows([]);
-        setImportSuccessMsg('');
-      }, 1500);
-    } catch (err: any) {
-      setImportErrorMsg(err.message || 'Failed to save imported students.');
-    }
-  };
-
   // Class Creation
   const handleCreateClassSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -300,6 +255,24 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
       return true;
     });
   }, [students, studentClassFilter, studentSearch]);
+
+  const filteredCertificates = useMemo(() => {
+    return certificates.filter(cert => {
+      if (certStatusFilter !== 'all' && (cert.status || 'valid') !== certStatusFilter) return false;
+      if (certSearchQuery.trim()) {
+        const q = certSearchQuery.toLowerCase();
+        return (
+          cert.studentName?.toLowerCase().includes(q) ||
+          cert.rollNo?.toLowerCase().includes(q) ||
+          cert.id?.toLowerCase().includes(q) ||
+          cert.verificationCode?.toLowerCase().includes(q) ||
+          cert.testTitle?.toLowerCase().includes(q) ||
+          cert.achievementTitle?.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [certificates, certStatusFilter, certSearchQuery]);
 
   const monitoringRows = useMemo(() => {
     let targetStudents = students;
@@ -349,11 +322,11 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
         <div className="z-10">
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-              Department of Technical Training
+              Training & Assessment Administration
             </span>
-            <span className="text-xs text-slate-400 font-mono">DOTT Aditya University</span>
+            <span className="text-xs text-slate-400 font-mono">TYPETEST Enterprise & Academy</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-100 mt-2">Faculty Examination Portal</h1>
+          <h1 className="text-2xl sm:text-3xl font-black text-slate-100 mt-2">Trainer & Instructor Console</h1>
           <p className="text-xs text-slate-400 mt-1 max-w-2xl">
             Create test banks, assign timed assessments on-demand in IST, import students via Excel, and monitor candidate speed metrics in real-time.
           </p>
@@ -440,6 +413,18 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
         >
           <FileText className="w-4 h-4" />
           <span>Submissions & Reports ({submissions.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('certificates')}
+          className={`pb-3 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all cursor-pointer ${
+            activeTab === 'certificates'
+              ? 'border-emerald-400 text-emerald-400'
+              : 'border-transparent text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Award className="w-4 h-4" />
+          <span>Certificates & Credentials ({certificates.length})</span>
         </button>
 
         <button
@@ -688,6 +673,17 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
                   </div>
 
                   <div className="flex items-center gap-2 pt-3 border-t border-slate-800">
+                    {onLaunchTest && (
+                      <button
+                        onClick={() => onLaunchTest(test)}
+                        title="Open & Preview Test"
+                        className="p-2.5 rounded-xl bg-slate-800 hover:bg-emerald-500/20 text-slate-300 hover:text-emerald-400 transition-colors border border-slate-700 cursor-pointer flex items-center gap-1.5 text-xs font-semibold"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                        <span>Launch</span>
+                      </button>
+                    )}
+
                     <button
                       onClick={() => {
                         setShowAssignTestModal(test);
@@ -728,11 +724,19 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
 
             <div className="flex flex-wrap items-center gap-2.5">
               <button
-                onClick={() => downloadStudentImportTemplate('xlsx')}
+                onClick={() => setShowExcelImportModal(true)}
+                className="px-3.5 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>Import Students (Bulk)</span>
+              </button>
+
+              <button
+                onClick={() => downloadStudentImportTemplate(classes.map(c => ({ id: c.id, name: c.name })), 'xlsx')}
                 className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Download Excel Template</span>
+                <span>Download Template</span>
               </button>
 
               <button
@@ -867,7 +871,7 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
                     <span className="text-xs font-mono text-slate-400">{enrolledStudents.length} Students</span>
                   </div>
                   <h3 className="text-lg font-bold text-slate-100">{cls.name}</h3>
-                  <p className="text-xs text-slate-400">{cls.description || 'Department section'}</p>
+                  <p className="text-xs text-slate-400">{cls.description || 'Training section'}</p>
                 </div>
               );
             })}
@@ -943,7 +947,167 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
         </div>
       )}
 
-      {/* TAB 6: ACADEMY ASSIGNMENTS */}
+      {/* TAB 6: CERTIFICATES & CREDENTIAL MANAGEMENT */}
+      {activeTab === 'certificates' && (
+        <div className="space-y-6">
+          <div className="bg-slate-900 border border-slate-800 p-5 rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+            <div>
+              <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
+                <Award className="w-5 h-5 text-emerald-400" />
+                <span>Certificate Registry & Credential Management</span>
+              </h2>
+              <p className="text-xs text-slate-400">
+                Authoritative registry of issued certificates, performance velocity, verification codes, and revocation controls.
+              </p>
+            </div>
+
+            <button
+              onClick={() => setShowGenCertModal(true)}
+              className="px-4 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer shadow-md shadow-emerald-500/20"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Issue New Certificate</span>
+            </button>
+          </div>
+
+          {/* Filter Bar */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400 font-mono">Status:</span>
+              {(['all', 'valid', 'revoked'] as const).map(st => (
+                <button
+                  key={st}
+                  onClick={() => setCertStatusFilter(st)}
+                  className={`px-3 py-1 rounded-xl text-xs capitalize font-semibold transition-all cursor-pointer ${
+                    certStatusFilter === st
+                      ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-bold'
+                      : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
+                  }`}
+                >
+                  {st}
+                </button>
+              ))}
+            </div>
+
+            <div className="relative w-full sm:w-72">
+              <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search certificate ID, candidate, or test..."
+                value={certSearchQuery}
+                onChange={e => setCertSearchQuery(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+          </div>
+
+          {/* Certificates Table */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-300">
+                <thead className="bg-slate-950/80 text-slate-400 font-mono uppercase text-[10px] tracking-wider border-b border-slate-800">
+                  <tr>
+                    <th className="py-3 px-4">Certificate ID</th>
+                    <th className="py-3 px-4">Recipient Name</th>
+                    <th className="py-3 px-4">Roll / ID</th>
+                    <th className="py-3 px-4">Achievement</th>
+                    <th className="py-3 px-4 text-right">Net WPM</th>
+                    <th className="py-3 px-4 text-right">Accuracy</th>
+                    <th className="py-3 px-4 text-right">Issued Date (IST)</th>
+                    <th className="py-3 px-4 text-center">Status</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 font-sans">
+                  {filteredCertificates.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="py-8 text-center text-slate-500 font-mono text-xs">
+                        No certificates matching search filter.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredCertificates.map(cert => {
+                      const isRev = cert.status === 'revoked';
+                      return (
+                        <tr key={cert.id} className="hover:bg-slate-800/40 transition-colors">
+                          <td className="py-3 px-4 font-mono font-bold text-emerald-400">
+                            {cert.id || cert.certificateNumber || cert.verificationCode}
+                          </td>
+                          <td className="py-3 px-4 font-semibold text-slate-100">{cert.studentName}</td>
+                          <td className="py-3 px-4 font-mono text-slate-400">{cert.rollNo || '—'}</td>
+                          <td className="py-3 px-4 text-slate-300">{cert.achievementTitle || cert.testTitle}</td>
+                          <td className="py-3 px-4 text-right font-mono font-bold text-emerald-400">
+                            {cert.wpm} WPM
+                          </td>
+                          <td className="py-3 px-4 text-right font-mono font-bold text-amber-400">
+                            {cert.accuracy}%
+                          </td>
+                          <td className="py-3 px-4 text-right font-mono text-slate-400 text-[11px]">
+                            {formatISTDate(cert.issuedAt)}
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            {isRev ? (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                                REVOKED
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                VALID
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 text-right space-x-1.5">
+                            <button
+                              onClick={() => {
+                                setSelectedViewCert(cert);
+                                setIsCertModalOpen(true);
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-[11px] transition-colors cursor-pointer"
+                              title="Inspect & Print"
+                            >
+                              View
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (onOpenVerification) {
+                                  onOpenVerification(cert.id || cert.verificationCode);
+                                }
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 font-semibold text-[11px] transition-colors cursor-pointer"
+                              title="Verify Online in Registry"
+                            >
+                              Verify
+                            </button>
+                            {isRev ? (
+                              <button
+                                onClick={() => updateCertificateStatus(cert.id, 'valid')}
+                                className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 font-semibold text-[11px] transition-colors cursor-pointer"
+                                title="Re-activate Certificate"
+                              >
+                                Re-activate
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => updateCertificateStatus(cert.id, 'revoked')}
+                                className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 font-semibold text-[11px] transition-colors cursor-pointer"
+                                title="Revoke Certificate"
+                              >
+                                Revoke
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 7: ACADEMY ASSIGNMENTS */}
       {activeTab === 'academy' && (
         <TrainerAcademyManagement
           classes={classes}
@@ -1201,114 +1365,11 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
       )}
 
       {/* MODAL 3: EXCEL BULK IMPORT MODAL */}
-      {showExcelImportModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-3xl w-full shadow-2xl space-y-5 max-h-[92vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
-                <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
-                Bulk Student Import via Excel (.xlsx / .csv)
-              </h2>
-              <button
-                onClick={() => {
-                  setShowExcelImportModal(false);
-                  setParsedRows([]);
-                }}
-                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-200"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-xs text-slate-300 flex items-center justify-between">
-                <div>
-                  <strong>Need the format?</strong> Download the sample Excel template with pre-filled headers and sample rows.
-                </div>
-                <button
-                  onClick={() => downloadStudentImportTemplate('xlsx')}
-                  className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-colors shrink-0 shadow"
-                >
-                  Download Template
-                </button>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-2">
-                  Upload Excel or CSV File
-                </label>
-                <input
-                  type="file"
-                  accept=".xlsx,.xls,.csv"
-                  onChange={handleExcelFileUpload}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3 text-xs text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-emerald-500 file:text-slate-950 cursor-pointer"
-                />
-              </div>
-
-              {importErrorMsg && (
-                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
-                  {importErrorMsg}
-                </div>
-              )}
-
-              {importSuccessMsg && (
-                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs">
-                  {importSuccessMsg}
-                </div>
-              )}
-
-              {/* Parsed Rows Preview Table */}
-              {parsedRows.length > 0 && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs font-mono">
-                    <span className="text-slate-300 font-bold">
-                      Parsed Preview: {parsedRows.length} Rows (Valid: {parsedRows.filter(r => r.isValid).length})
-                    </span>
-                  </div>
-
-                  <div className="bg-slate-950 rounded-2xl border border-slate-800 max-h-56 overflow-y-auto p-2">
-                    <table className="w-full text-left text-xs text-slate-300">
-                      <thead className="text-[10px] font-mono text-slate-400 uppercase border-b border-slate-800">
-                        <tr>
-                          <th className="py-2 px-3">Roll No</th>
-                          <th className="py-2 px-3">Name</th>
-                          <th className="py-2 px-3">Email</th>
-                          <th className="py-2 px-3">Batch</th>
-                          <th className="py-2 px-3 text-center">Valid</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
-                        {parsedRows.map((r, idx) => (
-                          <tr key={idx} className={r.isValid ? '' : 'bg-rose-500/10'}>
-                            <td className="py-1.5 px-3 font-bold text-emerald-400">{r.rollNo}</td>
-                            <td className="py-1.5 px-3 text-slate-200">{r.name}</td>
-                            <td className="py-1.5 px-3 text-slate-400">{r.email}</td>
-                            <td className="py-1.5 px-3 text-slate-400">{r.batch}</td>
-                            <td className="py-1.5 px-3 text-center">
-                              {r.isValid ? (
-                                <CheckCircle2 className="w-4 h-4 text-emerald-400 inline" />
-                              ) : (
-                                <AlertTriangle className="w-4 h-4 text-rose-400 inline" />
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <button
-                    onClick={handleCommitExcelImport}
-                    className="w-full py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-all shadow-md shadow-emerald-500/20"
-                  >
-                    Commit & Save {parsedRows.filter(r => r.isValid).length} Students to Database
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <ExcelStudentImportModal
+        isOpen={showExcelImportModal}
+        onClose={() => setShowExcelImportModal(false)}
+        role="trainer"
+      />
 
       {/* MODAL 4: ADD SINGLE STUDENT */}
       {showAddStudentModal && (
@@ -1492,7 +1553,7 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
                 <label className="block text-xs font-semibold text-slate-300 mb-1">Description</label>
                 <input
                   type="text"
-                  placeholder="Department & Track Details..."
+                  placeholder="Program & Track Details..."
                   value={newClassDesc}
                   onChange={e => setNewClassDesc(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-100"
@@ -1541,6 +1602,16 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
             setIsCertModalOpen(false);
             setSelectedViewCert(null);
           }}
+          onOpenVerification={onOpenVerification}
+        />
+      )}
+
+      {/* EXCEL / CSV BULK STUDENT IMPORT MODAL */}
+      {showExcelImportModal && (
+        <ExcelStudentImportModal
+          isOpen={showExcelImportModal}
+          onClose={() => setShowExcelImportModal(false)}
+          allowedClasses={classes}
         />
       )}
     </div>

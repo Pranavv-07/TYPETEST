@@ -235,45 +235,176 @@ ALTER TABLE violations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE certificates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 
--- Anonymous/Public access policies for the institutional portal
-DROP POLICY IF EXISTS departments_all ON departments;
-CREATE POLICY departments_all ON departments FOR ALL USING (true);
+-- Helper security functions
+CREATE OR REPLACE FUNCTION get_auth_role()
+RETURNS TEXT AS $$
+BEGIN
+    RETURN coalesce(
+        current_setting('request.jwt.claim.role', true),
+        (current_setting('request.jwt.claims', true)::jsonb ->> 'role'),
+        'anon'
+    );
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
 
-DROP POLICY IF EXISTS batches_all ON batches;
-CREATE POLICY batches_all ON batches FOR ALL USING (true);
+CREATE OR REPLACE FUNCTION get_auth_uid()
+RETURNS UUID AS $$
+BEGIN
+    RETURN nullif(
+        coalesce(
+            current_setting('request.jwt.claim.sub', true),
+            (current_setting('request.jwt.claims', true)::jsonb ->> 'sub')
+        ),
+        ''
+    )::UUID;
+EXCEPTION
+    WHEN OTHERS THEN RETURN NULL;
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
 
-DROP POLICY IF EXISTS classes_all ON classes;
-CREATE POLICY classes_all ON classes FOR ALL USING (true);
+CREATE OR REPLACE FUNCTION is_admin_user()
+RETURNS BOOLEAN AS $$
+BEGIN
+    IF get_auth_role() = 'service_role' THEN
+        RETURN TRUE;
+    END IF;
+    RETURN EXISTS (
+        SELECT 1 FROM admins
+        WHERE auth_user_id = get_auth_uid() AND status = 'active'
+    );
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
 
-DROP POLICY IF EXISTS trainers_all ON trainers;
-CREATE POLICY trainers_all ON trainers FOR ALL USING (true);
+CREATE OR REPLACE FUNCTION is_trainer_user()
+RETURNS BOOLEAN AS $$
+BEGIN
+    IF get_auth_role() = 'service_role' OR is_admin_user() THEN
+        RETURN TRUE;
+    END IF;
+    RETURN EXISTS (
+        SELECT 1 FROM trainers
+        WHERE auth_user_id = get_auth_uid() AND status = 'active'
+    );
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
 
-DROP POLICY IF EXISTS trainer_classes_all ON trainer_classes;
-CREATE POLICY trainer_classes_all ON trainer_classes FOR ALL USING (true);
+CREATE OR REPLACE FUNCTION get_current_student_id()
+RETURNS UUID AS $$
+DECLARE
+    v_id UUID;
+BEGIN
+    SELECT id INTO v_id FROM students WHERE auth_user_id = get_auth_uid();
+    RETURN v_id;
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
 
-DROP POLICY IF EXISTS students_all ON students;
-CREATE POLICY students_all ON students FOR ALL USING (true);
+-- 1. DEPARTMENTS & BATCHES & CLASSES
+CREATE POLICY departments_select_policy ON departments FOR SELECT USING (true);
+CREATE POLICY departments_insert_admin ON departments FOR INSERT WITH CHECK (is_admin_user());
+CREATE POLICY departments_update_admin ON departments FOR UPDATE USING (is_admin_user());
+CREATE POLICY departments_delete_admin ON departments FOR DELETE USING (is_admin_user());
 
-DROP POLICY IF EXISTS admins_all ON admins;
-CREATE POLICY admins_all ON admins FOR ALL USING (true);
+CREATE POLICY batches_select_policy ON batches FOR SELECT USING (true);
+CREATE POLICY batches_insert_admin ON batches FOR INSERT WITH CHECK (is_admin_user());
+CREATE POLICY batches_update_admin ON batches FOR UPDATE USING (is_admin_user());
+CREATE POLICY batches_delete_admin ON batches FOR DELETE USING (is_admin_user());
 
-DROP POLICY IF EXISTS tests_all ON tests;
-CREATE POLICY tests_all ON tests FOR ALL USING (true);
+CREATE POLICY classes_select_policy ON classes FOR SELECT USING (true);
+CREATE POLICY classes_insert_admin ON classes FOR INSERT WITH CHECK (is_admin_user());
+CREATE POLICY classes_update_admin ON classes FOR UPDATE USING (is_admin_user());
+CREATE POLICY classes_delete_admin ON classes FOR DELETE USING (is_admin_user());
 
-DROP POLICY IF EXISTS test_assignments_all ON test_assignments;
-CREATE POLICY test_assignments_all ON test_assignments FOR ALL USING (true);
+-- 2. TRAINERS & TRAINER CLASSES
+CREATE POLICY trainers_select_policy ON trainers FOR SELECT USING (true);
+CREATE POLICY trainers_insert_admin ON trainers FOR INSERT WITH CHECK (is_admin_user());
+CREATE POLICY trainers_update_admin ON trainers FOR UPDATE USING (is_admin_user());
+CREATE POLICY trainers_delete_admin ON trainers FOR DELETE USING (is_admin_user());
 
-DROP POLICY IF EXISTS attempts_all ON attempts;
-CREATE POLICY attempts_all ON attempts FOR ALL USING (true);
+CREATE POLICY trainer_classes_select_policy ON trainer_classes FOR SELECT USING (true);
+CREATE POLICY trainer_classes_insert_admin ON trainer_classes FOR INSERT WITH CHECK (is_admin_user());
+CREATE POLICY trainer_classes_update_admin ON trainer_classes FOR UPDATE USING (is_admin_user());
+CREATE POLICY trainer_classes_delete_admin ON trainer_classes FOR DELETE USING (is_admin_user());
 
-DROP POLICY IF EXISTS violations_all ON violations;
-CREATE POLICY violations_all ON violations FOR ALL USING (true);
+-- 3. STUDENTS (Candidates)
+CREATE POLICY students_select_policy ON students FOR SELECT USING (
+    id = get_current_student_id() OR
+    auth_user_id = get_auth_uid() OR
+    is_trainer_user() OR
+    is_admin_user() OR
+    get_auth_role() = 'anon'
+);
+CREATE POLICY students_insert_admin ON students FOR INSERT WITH CHECK (is_admin_user());
+CREATE POLICY students_update_admin ON students FOR UPDATE USING (is_admin_user() OR id = get_current_student_id());
+CREATE POLICY students_delete_admin ON students FOR DELETE USING (is_admin_user());
 
-DROP POLICY IF EXISTS certificates_all ON certificates;
-CREATE POLICY certificates_all ON certificates FOR ALL USING (true);
+-- 4. ADMINS
+CREATE POLICY admins_select_policy ON admins FOR SELECT USING (is_admin_user() OR get_auth_role() = 'anon');
+CREATE POLICY admins_manage_policy ON admins FOR ALL USING (is_admin_user());
 
-DROP POLICY IF EXISTS audit_logs_all ON audit_logs;
-CREATE POLICY audit_logs_all ON audit_logs FOR ALL USING (true);
+-- 5. TESTS
+CREATE POLICY tests_select_policy ON tests FOR SELECT USING (
+    is_prebuilt = true OR
+    status = 'active' OR
+    is_trainer_user() OR
+    is_admin_user()
+);
+CREATE POLICY tests_insert_policy ON tests FOR INSERT WITH CHECK (is_trainer_user() OR is_admin_user());
+CREATE POLICY tests_update_policy ON tests FOR UPDATE USING (is_trainer_user() OR is_admin_user());
+CREATE POLICY tests_delete_policy ON tests FOR DELETE USING (is_admin_user());
+
+-- 6. TEST ASSIGNMENTS
+CREATE POLICY test_assignments_select ON test_assignments FOR SELECT USING (
+    student_id = get_current_student_id() OR
+    class_id IN (SELECT class_id FROM students WHERE id = get_current_student_id()) OR
+    is_trainer_user() OR
+    is_admin_user()
+);
+CREATE POLICY test_assignments_manage ON test_assignments FOR ALL USING (is_trainer_user() OR is_admin_user());
+
+-- 7. ATTEMPTS
+CREATE POLICY attempts_select_policy ON attempts FOR SELECT USING (
+    student_id = get_current_student_id() OR
+    student_id IN (SELECT id FROM students WHERE auth_user_id = get_auth_uid()) OR
+    is_trainer_user() OR
+    is_admin_user()
+);
+CREATE POLICY attempts_insert_policy ON attempts FOR INSERT WITH CHECK (
+    student_id = get_current_student_id() OR
+    student_id IN (SELECT id FROM students WHERE auth_user_id = get_auth_uid()) OR
+    is_admin_user()
+);
+CREATE POLICY attempts_update_policy ON attempts FOR UPDATE USING (
+    (student_id = get_current_student_id() AND status = 'in_progress') OR
+    is_trainer_user() OR
+    is_admin_user()
+);
+CREATE POLICY attempts_delete_policy ON attempts FOR DELETE USING (is_admin_user());
+
+-- 8. VIOLATIONS
+CREATE POLICY violations_select_policy ON violations FOR SELECT USING (
+    student_id = get_current_student_id() OR
+    is_trainer_user() OR
+    is_admin_user()
+);
+CREATE POLICY violations_insert_policy ON violations FOR INSERT WITH CHECK (
+    student_id = get_current_student_id() OR
+    is_trainer_user() OR
+    is_admin_user()
+);
+CREATE POLICY violations_delete_policy ON violations FOR DELETE USING (is_admin_user());
+
+-- 9. CERTIFICATES
+CREATE POLICY certificates_select_policy ON certificates FOR SELECT USING (
+    status = 'valid' OR
+    student_id = get_current_student_id() OR
+    is_trainer_user() OR
+    is_admin_user()
+);
+CREATE POLICY certificates_manage_policy ON certificates FOR ALL USING (is_admin_user());
+
+-- 10. AUDIT LOGS
+CREATE POLICY audit_logs_select_policy ON audit_logs FOR SELECT USING (is_admin_user());
+CREATE POLICY audit_logs_insert_policy ON audit_logs FOR INSERT WITH CHECK (true);
 
 -- Enable Realtime publication
 DO $$
@@ -392,6 +523,10 @@ CREATE OR REPLACE FUNCTION checkpoint_test_attempt(
 )
 RETURNS JSONB AS $$
 BEGIN
+    IF p_accuracy < 0 OR p_accuracy > 100 OR p_net_wpm < 0 OR p_net_wpm > 350 THEN
+        RETURN jsonb_build_object('success', false, 'error', 'INVALID_METRICS');
+    END IF;
+
     UPDATE attempts
     SET
         net_wpm = p_net_wpm,
@@ -431,6 +566,8 @@ DECLARE
     v_cert_number TEXT;
     v_verify_code TEXT;
     v_achieve_title TEXT;
+    v_val_net_wpm NUMERIC := GREATEST(0, LEAST(350, p_net_wpm));
+    v_val_acc NUMERIC := GREATEST(0, LEAST(100, p_accuracy));
 BEGIN
     SELECT * INTO v_attempt FROM attempts WHERE id = p_attempt_id FOR UPDATE;
     IF NOT FOUND THEN
@@ -451,9 +588,9 @@ BEGIN
         status = 'submitted',
         submitted_at = v_now,
         time_taken_seconds = v_time_taken,
-        net_wpm = p_net_wpm,
+        net_wpm = v_val_net_wpm,
         raw_wpm = p_raw_wpm,
-        accuracy = p_accuracy,
+        accuracy = v_val_acc,
         correct_characters = p_correct_characters,
         total_characters = p_total_characters,
         errors = p_errors,
@@ -463,13 +600,13 @@ BEGIN
     WHERE id = p_attempt_id;
 
     -- Automatic certification if qualified (>= 20 WPM and >= 90% accuracy)
-    IF p_accuracy >= 90.0 AND p_net_wpm >= 20.0 THEN
+    IF v_val_acc >= coalesce(v_test.min_accuracy, 90.0) AND v_val_net_wpm >= 20.0 THEN
         v_cert_number := 'TYPETEST-' || to_char(v_now, 'YYYY') || '-' || upper(substring(replace(gen_random_uuid()::text, '-', '') from 1 for 8));
         v_verify_code := 'V-' || upper(substring(replace(gen_random_uuid()::text, '-', '') from 1 for 8));
         
-        IF p_net_wpm >= 60.0 THEN
+        IF v_val_net_wpm >= 60.0 THEN
             v_achieve_title := 'Master Assessment Certification';
-        ELSIF p_net_wpm >= 40.0 THEN
+        ELSIF v_val_net_wpm >= 40.0 THEN
             v_achieve_title := 'Proficient Assessment Certification';
         ELSE
             v_achieve_title := 'Standard Assessment Certification';
@@ -491,8 +628,8 @@ BEGIN
             v_attempt.test_id,
             v_cert_number,
             v_verify_code,
-            p_net_wpm,
-            p_accuracy,
+            v_val_net_wpm,
+            v_val_acc,
             v_achieve_title,
             v_now
         ) RETURNING * INTO v_certificate;
@@ -538,7 +675,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 6. RESET STUDENT ATTEMPT (Admin / Trainer Override)
+-- 6. RESET STUDENT ATTEMPT (Admin / Authorized Trainer Override)
 CREATE OR REPLACE FUNCTION reset_student_attempt(
     p_test_id UUID,
     p_student_id UUID,
@@ -547,8 +684,20 @@ CREATE OR REPLACE FUNCTION reset_student_attempt(
 )
 RETURNS JSONB AS $$
 DECLARE
+    v_is_authorized BOOLEAN := FALSE;
     v_deleted_count INTEGER;
 BEGIN
+    -- Verify caller authorization
+    SELECT EXISTS (
+        SELECT 1 FROM admins WHERE id = p_admin_id AND status = 'active'
+    ) OR EXISTS (
+        SELECT 1 FROM trainers WHERE id = p_admin_id AND status = 'active'
+    ) INTO v_is_authorized;
+
+    IF NOT v_is_authorized THEN
+        RAISE EXCEPTION 'UNAUTHORIZED: Only an active Administrator or Trainer may authorize attempt resets';
+    END IF;
+
     DELETE FROM attempts
     WHERE test_id = p_test_id AND student_id = p_student_id;
     GET DIAGNOSTICS v_deleted_count = ROW_COUNT;
@@ -562,7 +711,7 @@ BEGIN
         details
     ) VALUES (
         p_admin_id,
-        'Admin Override',
+        'Authorized Staff Override',
         'RESET_ATTEMPT',
         'attempt',
         p_test_id::text,

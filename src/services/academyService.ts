@@ -713,7 +713,7 @@ export function issueAcademyCertificate(
   finalWpm: number,
   finalAccuracy: number
 ): StudentCertificate {
-  const code = `DOTT-ADITYA-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
+  const code = `TT-CERT-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
   const cert: StudentCertificate = {
     id: `cert_academy_${Date.now()}`,
     studentId: student.id,
@@ -724,9 +724,9 @@ export function issueAcademyCertificate(
     accuracy: finalAccuracy,
     testTitle: 'Level 7 Professional Touch Typing Institutional Certification',
     issuedAt: new Date().toISOString(),
-    issuingAuthority: 'Department of Technical Training (DOTT), Aditya University',
+    issuingAuthority: 'TYPETEST Global Certification Authority',
     verificationCode: code,
-    certificateNumber: `DOTT-TTC-2026-${Math.floor(100000 + Math.random() * 900000)}`,
+    certificateNumber: `TT-TTC-2026-${Math.floor(100000 + Math.random() * 900000)}`,
     status: 'valid',
   };
 

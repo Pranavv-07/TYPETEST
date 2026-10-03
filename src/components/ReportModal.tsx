@@ -173,7 +173,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({ report, isOpen, onClos
 
         {/* Footer */}
         <div className="p-4 bg-slate-950 border-t border-slate-800 text-center text-xs text-slate-500 font-mono">
-          <span>Dept. of CSE • Institutional Examination & Assessment Record</span>
+          <span>TYPETEST • Assessment & Performance Record</span>
         </div>
       </div>
     </div>

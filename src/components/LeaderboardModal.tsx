@@ -280,7 +280,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ test, isOpen
 
         {/* Footer info */}
         <div className="p-4 bg-slate-950/80 border-t border-slate-800 text-center text-xs text-slate-500 font-mono">
-          <span>Official Institutional Examination Leaderboard • Dept. of CSE</span>
+          <span>Official Assessment Leaderboard • TYPETEST Verified Rankings</span>
         </div>
       </div>
     </div>

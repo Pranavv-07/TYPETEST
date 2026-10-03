@@ -96,8 +96,8 @@ const loadSavedMemoryCertificates = (): StudentCertificate[] => {
 
 let memoryCertificates: StudentCertificate[] = loadSavedMemoryCertificates();
 let memoryAdmins: AdminUser[] = [
-  { id: 'a0000000-0000-0000-0000-000000000001', name: 'Head of Examinations (Admin)', email: 'admin@testtype.edu', username: 'admin', role: 'SUPER ADMIN', status: 'active', createdAt: '2025-01-01' },
-  { id: 'a0000000-0000-0000-0000-000000000002', name: 'Academic Controller (CSE)', email: 'academic@testtype.edu', username: 'exam_admin', role: 'EXAM ADMIN', status: 'active', createdAt: '2025-01-05' }
+  { id: 'a0000000-0000-0000-0000-000000000001', name: 'Head of Examinations (Admin)', email: 'admin@testtype.edu', username: 'admin', role: 'SUPER ADMIN', status: 'active', password: 'admin@123', createdAt: '2025-01-01' },
+  { id: 'a0000000-0000-0000-0000-000000000002', name: 'Academic Controller (CSE)', email: 'academic@testtype.edu', username: 'exam_admin', role: 'EXAM ADMIN', status: 'active', password: 'exam_admin@123', createdAt: '2025-01-05' }
 ];
 
 let memoryAuditLogs: AuditLogEntry[] = [
@@ -154,7 +154,7 @@ export async function authenticateWithDatabase(
         .eq('status', 'active')
         .maybeSingle();
 
-      if (adminData && (trimmedPass === 'admin123' || trimmedPass === 'admin@123' || (adminData.password_hash && trimmedPass === adminData.password_hash))) {
+      if (adminData && adminData.password_hash && trimmedPass === adminData.password_hash) {
         return {
           success: true,
           user: {
@@ -176,7 +176,7 @@ export async function authenticateWithDatabase(
         .eq('status', 'active')
         .maybeSingle();
 
-      if (trainerData && (trimmedPass === 'trainer123' || trimmedPass === 'trainer@123' || trimmedPass === 'proctor123' || trimmedPass === 'proctor@123' || (trainerData.password_hash && trimmedPass === trainerData.password_hash))) {
+      if (trainerData && trainerData.password_hash && trimmedPass === trainerData.password_hash) {
         return {
           success: true,
           user: {
@@ -198,32 +198,14 @@ export async function authenticateWithDatabase(
 
       if (studentQueryError) {
         console.warn('Supabase student query error:', studentQueryError);
-        if (studentQueryError.code === 'PGRST205' || studentQueryError.message?.includes('Could not find the table')) {
-          return {
-            success: false,
-            message: 'Database initialization required: The "students" table has not been created in Supabase yet. Please run the setup SQL script in your Supabase SQL Editor.'
-          };
-        }
       }
 
       if (studentData) {
         if (studentData.status !== 'active') {
-          return { success: false, message: `Your student account is currently ${studentData.status}. Please contact the Department Examination Cell.` };
+          return { success: false, message: `Your student account is currently ${studentData.status}. Please contact your Organization Administrator.` };
         }
 
-        // Student password matches if:
-        // 1. Matches stored password_hash
-        // 2. Student enters their own roll number as the password (case-insensitive)
-        // 3. Student enters default institutional passwords ('1234', 'student123', 'student@123')
-        // 4. No password was configured on the account
-        const isStudentPasswordValid =
-          (studentData.password_hash && trimmedPass === studentData.password_hash) ||
-          trimmedPass.toLowerCase() === studentData.roll_number.toLowerCase() ||
-          trimmedPass.toLowerCase() === trimmedId.toLowerCase() ||
-          trimmedPass === '1234' ||
-          trimmedPass === 'student123' ||
-          trimmedPass === 'student@123' ||
-          !studentData.password_hash;
+        const isStudentPasswordValid = studentData.password_hash && trimmedPass === studentData.password_hash;
 
         if (isStudentPasswordValid) {
           return {
@@ -247,16 +229,19 @@ export async function authenticateWithDatabase(
 
   // Fallback directory lookup
   // Admin check
-  if (trimmedId.toLowerCase() === 'admin' && (trimmedPass === 'admin123' || trimmedPass === 'admin@123')) {
+  const matchedAdmin = memoryAdmins.find(
+    a => (a.username.toLowerCase() === trimmedId.toLowerCase() || a.email.toLowerCase() === trimmedId.toLowerCase()) && a.status === 'active'
+  );
+  if (matchedAdmin && matchedAdmin.password && trimmedPass === matchedAdmin.password) {
     return {
       success: true,
       user: {
-        id: memoryAdmins[0].id,
-        username: 'admin',
-        name: 'Head of Examinations (Admin)',
-        email: 'admin@testtype.edu',
+        id: matchedAdmin.id,
+        username: matchedAdmin.username,
+        name: matchedAdmin.name,
+        email: matchedAdmin.email,
         role: 'admin',
-        adminRole: 'SUPER ADMIN'
+        adminRole: matchedAdmin.role
       }
     };
   }
@@ -268,17 +253,10 @@ export async function authenticateWithDatabase(
       t.email.toLowerCase() === trimmedId.toLowerCase()
   );
   if (matchedTrainer) {
-    const isTrainerPassValid =
-      trimmedPass === (matchedTrainer.password || 'trainer@123') ||
-      trimmedPass === 'trainer123' ||
-      trimmedPass === 'trainer@123' ||
-      trimmedPass === 'proctor123' ||
-      trimmedPass === 'proctor@123';
-
-    if (isTrainerPassValid) {
-      if (matchedTrainer.status === 'inactive' || matchedTrainer.status === 'suspended') {
-        return { success: false, message: 'Your trainer account is currently inactive or suspended.' };
-      }
+    if (matchedTrainer.status === 'inactive' || matchedTrainer.status === 'suspended') {
+      return { success: false, message: 'Your trainer account is currently inactive or suspended.' };
+    }
+    if (matchedTrainer.password && trimmedPass === matchedTrainer.password) {
       return {
         success: true,
         user: {
@@ -300,19 +278,10 @@ export async function authenticateWithDatabase(
       (s.username && s.username.toLowerCase() === trimmedId.toLowerCase())
   );
   if (matchedStudent) {
-    const isPassValid =
-      (matchedStudent.password && trimmedPass === matchedStudent.password) ||
-      trimmedPass.toLowerCase() === matchedStudent.rollNo.toLowerCase() ||
-      trimmedPass.toLowerCase() === trimmedId.toLowerCase() ||
-      trimmedPass === '1234' ||
-      trimmedPass === 'student123' ||
-      trimmedPass === 'student@123' ||
-      !matchedStudent.password;
-
-    if (isPassValid) {
-      if (matchedStudent.status === 'inactive' || matchedStudent.status === 'suspended') {
-        return { success: false, message: `Your student account is currently ${matchedStudent.status}. Please contact the Department Examination Cell.` };
-      }
+    if (matchedStudent.status === 'inactive' || matchedStudent.status === 'suspended') {
+      return { success: false, message: `Your student account is currently ${matchedStudent.status}. Please contact your Organization Administrator.` };
+    }
+    if (matchedStudent.password && trimmedPass === matchedStudent.password) {
       return {
         success: true,
         user: {
@@ -361,15 +330,15 @@ export async function startTestAttemptAtomic(
   }
 
   // Fallback memory logic with strict single-attempt and time-window enforcement
+  const test = memoryTests.find(t => t.id === testId);
   const existingSub = memorySubmissions.find(s => s.testId === testId && s.studentId === studentId);
-  if (existingSub) {
+  if (test?.isCustomAssignment && existingSub) {
     return {
       success: false,
       message: `ALREADY_ATTEMPTED: Candidate has already completed this single-attempt examination.`
     };
   }
 
-  const test = memoryTests.find(t => t.id === testId);
   if (test) {
     const now = new Date();
     if (test.startAt && new Date(test.startAt) > now) {
@@ -639,7 +608,7 @@ export async function submitTestAttemptAtomic(
           accuracy: Number(certRecord.accuracy || submission.accuracy),
           testTitle: submission.testTitle,
           issuedAt: certRecord.issued_at || new Date().toISOString(),
-          issuingAuthority: 'Department of Computer Science & Engineering',
+          issuingAuthority: 'TYPETEST Global Certification Authority',
           verificationCode: certRecord.verification_code,
           certificateNumber: certRecord.certificate_number,
           status: certRecord.status || 'valid'
@@ -1631,7 +1600,7 @@ export async function fetchCertificates(): Promise<StudentCertificate[]> {
             accuracy: Number(c.accuracy),
             testTitle: c.tests?.title || 'Technical Typing Assessment',
             issuedAt: c.issued_at,
-            issuingAuthority: 'Department of Computer Science & Engineering',
+            issuingAuthority: 'TYPETEST Global Certification Authority',
             verificationCode: c.verification_code,
             certificateNumber: c.certificate_number,
             status: c.status

@@ -17,10 +17,10 @@ export const DeveloperFooter: React.FC = () => {
             </span>
           </div>
           <p className="text-xs text-slate-400">
-            Department of Technical Training (DOTT), Aditya University
+            TYPETEST Professional Typing Platform • Global Standards
           </p>
           <p className="text-[11px] text-slate-400 font-mono">
-            High-Performance Institutional Typing Speed Assessment & Examination Engine
+            High-Performance Typing Speed Assessment & Touch Typing Academy Engine
           </p>
         </div>
 

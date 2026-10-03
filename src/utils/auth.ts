@@ -43,49 +43,39 @@ export function authenticateCredentials(
     return { success: true, user: adminUser, token: session.token };
   }
 
-  // 2. Check Trainer / Proctor credentials
+  // 2. Check Trainer credentials
   const matchedTrainer = trainers.find(
     t =>
       t.username.toLowerCase() === trimmedId.toLowerCase() ||
-      t.email.toLowerCase() === trimmedId.toLowerCase() ||
-      (trimmedId.toLowerCase() === 'trainer' && t.id === 'trn-1')
+      t.email.toLowerCase() === trimmedId.toLowerCase()
   );
 
-  const isDefaultTrainerLogin =
-    trimmedId.toLowerCase() === 'trainer' &&
-    (trimmedPass === 'trainer123' || trimmedPass === 'trainer@123' || trimmedPass === 'trainer' || trimmedPass === 'proctor123' || trimmedPass === 'proctor@123');
-
-  if (isDefaultTrainerLogin || matchedTrainer) {
-    const trainerPass = matchedTrainer?.password || 'trainer@123';
-    const isPassValid =
-      isDefaultTrainerLogin ||
-      trimmedPass === trainerPass ||
-      trimmedPass === 'trainer123' ||
-      trimmedPass === 'trainer@123' ||
-      trimmedPass === 'proctor123' ||
-      trimmedPass === 'proctor@123';
-
-    if (isPassValid) {
-      const trainerUser: User = {
-        id: matchedTrainer?.id || 'trn-1',
-        username: matchedTrainer?.username || 'trainer',
-        name: matchedTrainer?.name || 'Pavan B',
-        role: 'trainer',
-        email: matchedTrainer?.email || 'pavan.b@testtype.edu'
-      };
-      const session = saveSession(trainerUser);
-      return { success: true, user: trainerUser, token: session.token };
+  if (matchedTrainer && matchedTrainer.password && trimmedPass === matchedTrainer.password) {
+    if (matchedTrainer.status === 'inactive' || matchedTrainer.status === 'suspended') {
+      return { success: false, message: 'Account is inactive or suspended.' };
     }
+    const trainerUser: User = {
+      id: matchedTrainer.id,
+      username: matchedTrainer.username,
+      name: matchedTrainer.name,
+      role: 'trainer',
+      email: matchedTrainer.email
+    };
+    const session = saveSession(trainerUser);
+    return { success: true, user: trainerUser, token: session.token };
   }
 
-  // 3. Check Student credentials (Roll Number or Email)
+  // 3. Check Student credentials (Roll Number or Email or Username)
   const matchedStudent = students.find(
     s =>
       s.rollNo.toUpperCase() === trimmedId.toUpperCase() ||
-      (s.email && s.email.toLowerCase() === trimmedId.toLowerCase())
+      (s.email && s.email.toLowerCase() === trimmedId.toLowerCase()) ||
+      (s.username && s.username.toLowerCase() === trimmedId.toLowerCase())
   );
-  const studentPass = matchedStudent?.password || '1234';
-  if (matchedStudent && (trimmedPass === studentPass || trimmedPass === '1234')) {
+  if (matchedStudent && matchedStudent.password && trimmedPass === matchedStudent.password) {
+    if (matchedStudent.status === 'inactive' || matchedStudent.status === 'suspended') {
+      return { success: false, message: 'Account is inactive or suspended.' };
+    }
     const studentUser: User = {
       id: matchedStudent.id,
       username: matchedStudent.rollNo,

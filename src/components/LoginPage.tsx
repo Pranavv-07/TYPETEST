@@ -63,10 +63,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess, onContinueAsGue
             <Keyboard className="w-7 h-7" />
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-100 tracking-tight">
-            Sign in to Test<span className="text-emerald-400">Type</span>
+            Sign in to TYPE<span className="text-emerald-400">TEST</span>
           </h1>
           <p className="text-xs text-slate-400 max-w-sm mx-auto">
-            Department of Technical Training (DOTT), Aditya University
+            Professional Typing & Keyboard Mastery Platform
           </p>
         </div>
 
@@ -75,10 +75,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess, onContinueAsGue
           <div className="flex items-center justify-between pb-4 border-b border-slate-800 text-xs font-semibold text-slate-300">
             <div className="flex items-center gap-2">
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span>Institutional Sign In</span>
+              <span>Account Sign In</span>
             </div>
             <span className="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-              DOTT SECURE
+              TYPETEST SECURE
             </span>
           </div>
 

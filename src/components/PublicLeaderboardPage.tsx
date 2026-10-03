@@ -114,7 +114,7 @@ export const PublicLeaderboardPage: React.FC<PublicLeaderboardPageProps> = ({
               Official Assessment Leaderboard
             </span>
             <span className="text-xs text-slate-400 font-mono">
-              Dept. of CSE • Examination Records
+              TYPETEST Leaderboard • Public Rankings
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-100 mt-2 flex items-center gap-2.5">
@@ -122,7 +122,7 @@ export const PublicLeaderboardPage: React.FC<PublicLeaderboardPageProps> = ({
             <span>{test ? test.title : 'Typing Assessment Leaderboard'}</span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-2xl">
-            {test?.description || 'Institutional live speed and accuracy rankings for candidates.'}
+            {test?.description || 'Real-time speed and accuracy rankings for candidates and global typists.'}
           </p>
 
           {/* Test Parameters Bar */}

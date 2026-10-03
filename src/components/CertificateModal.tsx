@@ -1,25 +1,49 @@
 import React, { useRef, useState } from 'react';
 import { StudentCertificate } from '../types';
-import { X, Download, Printer, Award, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import {
+  X,
+  Download,
+  Printer,
+  Award,
+  ShieldCheck,
+  CheckCircle2,
+  Layout,
+  Sparkles,
+  ExternalLink,
+  Copy,
+  Check,
+  Share2,
+  Building
+} from 'lucide-react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { formatISTDate } from '../utils/dateUtils';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface CertificateModalProps {
   certificate: StudentCertificate | null;
   isOpen: boolean;
   onClose: () => void;
+  onOpenVerification?: (certId: string) => void;
 }
 
 export const CertificateModal: React.FC<CertificateModalProps> = ({
   certificate,
   isOpen,
-  onClose
+  onClose,
+  onOpenVerification
 }) => {
   const [isExporting, setIsExporting] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [template, setTemplate] = useState<'modern' | 'classic' | 'minimal' | 'corporate'>(
+    (certificate?.template as any) || 'modern'
+  );
   const certRef = useRef<HTMLDivElement>(null);
 
   if (!isOpen || !certificate) return null;
+
+  const certId = certificate.id || certificate.certificateNumber || certificate.verificationCode;
+  const verificationUrl = `${window.location.origin}/#verify-certificate/${encodeURIComponent(certId)}`;
 
   const handleDownloadPDF = async () => {
     if (!certRef.current) return;
@@ -28,14 +52,14 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
       const canvas = await html2canvas(certRef.current, {
         scale: 2.5,
         useCORS: true,
-        backgroundColor: '#0b1120'
+        backgroundColor: template === 'minimal' ? '#0f172a' : '#020617'
       });
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF('landscape', 'mm', 'a4');
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`${(certificate.studentName || 'Student').replace(/\s+/g, '_')}_DOTT_Aditya_Certificate.pdf`);
+      pdf.save(`${(certificate.studentName || 'Recipient').replace(/\s+/g, '_')}_TYPETEST_Certificate.pdf`);
     } catch (err) {
       console.error('Failed to export PDF:', err);
       window.print();
@@ -48,106 +72,180 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
     window.print();
   };
 
+  const handleCopyVerificationLink = () => {
+    navigator.clipboard.writeText(verificationUrl).then(() => {
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2500);
+    });
+  };
+
   const formattedDate = formatISTDate(certificate.issuedAt);
+  const orgName = certificate.organizationName || certificate.issuingAuthority || 'TYPETEST Global Verification Authority';
+  const certTitle = certificate.certificateTitle || 'Certificate of Achievement';
+  const primarySigner = certificate.primarySignerName || 'Alex Mercer';
+  const primaryTitle = certificate.primarySignerTitle || 'Director of Evaluations';
+  const secondarySigner = certificate.secondarySignerName || 'TYPETEST Registry';
+  const secondaryTitle = certificate.secondarySignerTitle || 'Authenticated Credential Officer';
+  const isInstitutional = certificate.certificateType === 'dott_university' || Boolean(certificate.department);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/90 backdrop-blur-md animate-in fade-in duration-200">
       <div className="relative w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[96vh]">
         {/* Top bar controls */}
-        <div className="p-4 border-b border-slate-800 bg-slate-950 flex items-center justify-between no-print">
+        <div className="p-4 border-b border-slate-800 bg-slate-950 flex flex-wrap items-center justify-between gap-3 no-print">
           <div className="flex items-center gap-2">
             <Award className="w-5 h-5 text-emerald-400" />
-            <span className="text-sm font-bold text-slate-200">Official Institutional Certificate</span>
+            <span className="text-sm font-bold text-slate-200">
+              {isInstitutional ? 'Institutional Credential' : 'Official TYPETEST Credential'}
+            </span>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          {/* Template Switcher */}
+          <div className="flex items-center gap-1.5 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs font-mono">
+            <span className="text-slate-500 px-2 text-[10px] uppercase font-bold hidden sm:inline">Theme:</span>
+            {(['modern', 'classic', 'minimal', 'corporate'] as const).map(t => (
+              <button
+                key={t}
+                onClick={() => setTemplate(t)}
+                className={`px-2.5 py-1 rounded-lg text-xs capitalize transition-colors cursor-pointer ${
+                  template === t ? 'bg-emerald-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2">
+            {/* Verify Certificate Button */}
+            <button
+              onClick={() => {
+                if (onOpenVerification) {
+                  onOpenVerification(certId);
+                } else {
+                  window.open(verificationUrl, '_blank');
+                }
+              }}
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Verify Online</span>
+            </button>
+
+            <button
+              onClick={handleCopyVerificationLink}
+              className="px-3 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="Copy Public Verification Link"
+            >
+              {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              <span className="hidden sm:inline">{copiedLink ? 'Copied' : 'Copy Link'}</span>
+            </button>
+
             <button
               onClick={handleDownloadPDF}
               disabled={isExporting}
-              className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 flex items-center gap-1.5 transition-colors shadow-lg shadow-emerald-500/20 disabled:opacity-50"
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 flex items-center gap-1.5 transition-colors shadow-lg shadow-emerald-500/20 disabled:opacity-50 cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>{isExporting ? 'Generating PDF...' : 'Download PDF'}</span>
+              <span>{isExporting ? 'Generating...' : 'PDF'}</span>
             </button>
+
             <button
               onClick={handlePrint}
-              className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center gap-1.5 transition-colors"
+              className="px-3 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5" />
-              <span>Print</span>
+              <span className="hidden sm:inline">Print</span>
             </button>
+
             <button
               onClick={onClose}
-              className="p-2 rounded-xl text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"
+              className="p-2 rounded-xl text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        {/* Certificate Body (Aditya University DOTT Signature Style) */}
-        <div className="p-6 sm:p-8 overflow-y-auto flex-1 flex justify-center bg-slate-950/50">
+        {/* Certificate Rendering Area */}
+        <div className="p-4 sm:p-8 overflow-y-auto flex-1 flex justify-center bg-slate-950/60">
           <div
             ref={certRef}
             id="printable-certificate"
-            className="relative w-full max-w-3xl bg-slate-950 border-[6px] border-amber-500/60 rounded-2xl p-8 sm:p-12 text-center text-slate-100 shadow-2xl overflow-hidden print:border-amber-600 print:text-black print:bg-white"
+            className={`relative w-full max-w-3xl text-center text-slate-100 shadow-2xl overflow-hidden p-6 sm:p-12 transition-all ${
+              template === 'minimal'
+                ? 'bg-slate-900 border-2 border-slate-700 rounded-xl'
+                : template === 'classic'
+                ? 'bg-slate-950 border-[8px] border-amber-600/70 rounded-2xl'
+                : template === 'corporate'
+                ? 'bg-slate-950 border-4 border-slate-700 rounded-2xl'
+                : 'bg-slate-950 border-[6px] border-amber-500/60 rounded-2xl'
+            }`}
             style={{
-              backgroundImage: 'radial-gradient(ellipse at 50% 10%, rgba(16, 185, 129, 0.08) 0%, rgba(15, 23, 42, 0) 70%)'
+              backgroundImage:
+                template === 'classic'
+                  ? 'radial-gradient(ellipse at 50% 15%, rgba(245, 158, 11, 0.08) 0%, rgba(2, 6, 23, 0) 75%)'
+                  : 'radial-gradient(ellipse at 50% 10%, rgba(16, 185, 129, 0.08) 0%, rgba(2, 6, 23, 0) 70%)'
             }}
           >
-            {/* Elegant Double Inner Border */}
-            <div className="absolute inset-2 sm:inset-3 border border-amber-500/30 rounded-xl pointer-events-none" />
+            {/* Elegant Inner Frame */}
+            <div className="absolute inset-2 sm:inset-3 border border-amber-500/25 rounded-xl pointer-events-none" />
 
-            {/* Decorative Corner Filigrees */}
-            <div className="absolute top-4 left-4 w-7 h-7 border-t-2 border-l-2 border-amber-400" />
-            <div className="absolute top-4 right-4 w-7 h-7 border-t-2 border-r-2 border-amber-400" />
-            <div className="absolute bottom-4 left-4 w-7 h-7 border-b-2 border-l-2 border-amber-400" />
-            <div className="absolute bottom-4 right-4 w-7 h-7 border-b-2 border-r-2 border-amber-400" />
+            {/* Corner Accents */}
+            <div className="absolute top-4 left-4 w-6 h-6 border-t-2 border-l-2 border-amber-400/80" />
+            <div className="absolute top-4 right-4 w-6 h-6 border-t-2 border-r-2 border-amber-400/80" />
+            <div className="absolute bottom-4 left-4 w-6 h-6 border-b-2 border-l-2 border-amber-400/80" />
+            <div className="absolute bottom-4 right-4 w-6 h-6 border-b-2 border-r-2 border-amber-400/80" />
 
-            {/* Header / Institutional Branding */}
-            <div className="space-y-1.5 pt-2">
-              <div className="text-sm sm:text-base font-extrabold tracking-widest text-amber-300 uppercase font-serif">
-                Department of Technical Training (DOTT)
+            {/* Header / Brand */}
+            <div className="space-y-1 pt-1">
+              <div className="text-xs sm:text-sm font-extrabold tracking-widest text-emerald-400 uppercase font-mono">
+                {orgName}
               </div>
-              <div className="text-xs sm:text-sm font-semibold tracking-wider text-slate-300 uppercase">
-                Aditya University &bull; TypeTest Examination Authority
+              <div className="text-[11px] text-slate-400 uppercase tracking-wider font-mono">
+                {isInstitutional && certificate.department
+                  ? certificate.department
+                  : 'Official Typing Proficiency Credential'}
               </div>
             </div>
 
             {/* Certificate Title */}
-            <div className="my-6 space-y-1.5">
-              <h1 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-400 to-amber-200 uppercase print:text-amber-700">
-                Certificate of Achievement
+            <div className="my-4 sm:my-5 space-y-1">
+              <h1 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-400 to-amber-200 uppercase font-serif">
+                {certTitle}
               </h1>
-              <p className="text-xs sm:text-sm text-slate-400 italic">
-                This is to officially certify that
+              <p className="text-xs text-slate-400 italic font-serif">
+                This certifies that
               </p>
             </div>
 
-            {/* Candidate Name & Roll Number */}
-            <div className="my-4 inline-block px-8 py-2 border-b-2 border-amber-500/40">
-              <div className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-emerald-400 font-serif tracking-wide print:text-emerald-800">
+            {/* Candidate Name */}
+            <div className="my-2 sm:my-3 inline-block px-8 py-2 border-b-2 border-amber-500/40">
+              <div className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-emerald-400 font-serif tracking-wide">
                 {certificate.studentName}
               </div>
-              <div className="text-xs sm:text-sm font-mono text-slate-300 mt-1 font-semibold">
-                Roll Number: <span className="text-amber-300 font-bold">{certificate.rollNo || '24B11CS355'}</span>
-              </div>
+              {certificate.rollNo && (
+                <div className="text-xs font-mono text-slate-400 mt-1">
+                  Candidate ID: <span className="text-amber-300 font-bold">{certificate.rollNo}</span>
+                </div>
+              )}
             </div>
 
-            {/* Achievement Citation */}
-            <div className="my-4 max-w-xl mx-auto space-y-2">
-              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                has successfully established benchmark proficiency in keyboard ergonomics and speed touch-typing examinations in:
+            {/* Citation */}
+            <div className="my-3 sm:my-4 max-w-xl mx-auto space-y-2">
+              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-sans">
+                has successfully established verified proficiency in touch-typing velocity, ergonomic rhythm, and precision accuracy in:
               </p>
-              <div className="inline-block bg-emerald-500/10 border border-emerald-500/30 px-5 py-2 rounded-xl text-emerald-300 font-bold text-sm tracking-wide">
+              <div className="inline-block bg-emerald-500/10 border border-emerald-500/30 px-5 py-2 rounded-xl text-emerald-300 font-bold text-xs sm:text-sm tracking-wide">
                 {certificate.achievementTitle || certificate.testTitle}
               </div>
             </div>
 
-            {/* Performance Metrics Display */}
-            <div className="grid grid-cols-2 max-w-xs mx-auto gap-4 my-5 bg-slate-900/80 border border-slate-800/80 p-3.5 rounded-xl font-mono text-xs">
+            {/* Scorecard Strip */}
+            <div className="grid grid-cols-2 max-w-xs mx-auto gap-4 my-4 sm:my-5 bg-slate-900/80 border border-slate-800/80 p-3.5 rounded-xl font-mono text-xs">
               <div className="border-r border-slate-800/80 pr-2">
-                <div className="text-slate-400 text-[10px] uppercase font-bold">Verified Speed</div>
+                <div className="text-slate-400 text-[10px] uppercase font-bold">Verified Net Speed</div>
                 <div className="text-2xl sm:text-3xl font-black text-emerald-400">{certificate.wpm} WPM</div>
               </div>
               <div className="pl-2">
@@ -156,35 +254,38 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
               </div>
             </div>
 
-            {/* Signatures & Accreditation Strip */}
+            {/* Signatures & Verified QR Seal */}
             <div className="pt-6 mt-4 border-t border-slate-800/80 grid grid-cols-3 items-end text-xs text-slate-400 font-mono">
-              {/* Left Signature: Technical Training Division */}
+              {/* Primary Signature */}
               <div className="text-left space-y-1">
-                <div className="font-serif italic text-slate-300 text-sm">Pavan B</div>
+                <div className="font-serif italic text-slate-200 text-sm">{primarySigner}</div>
                 <div className="h-[1px] w-24 bg-slate-700" />
-                <div className="text-[11px] text-slate-200 font-bold">Lead Faculty Mentor</div>
-                <div className="text-[9px] text-slate-400">DOTT, Aditya University</div>
+                <div className="text-[11px] text-slate-200 font-bold">{primaryTitle}</div>
+                <div className="text-[9px] text-slate-400">{orgName}</div>
               </div>
 
-              {/* Center Seal */}
-              <div className="flex flex-col items-center justify-center">
-                <div className="w-12 h-12 rounded-full border-2 border-amber-400/60 bg-amber-500/10 flex items-center justify-center text-amber-400 shadow-lg shadow-amber-500/10">
-                  <ShieldCheck className="w-6 h-6" />
+              {/* Verified Digital Seal with Real QR Code */}
+              <div className="flex flex-col items-center justify-center space-y-1">
+                <div className="p-1.5 bg-white rounded-lg shadow-md">
+                  <QRCodeSVG
+                    value={verificationUrl}
+                    size={48}
+                    level="M"
+                    includeMargin={false}
+                  />
                 </div>
-                <span className="text-[9px] font-bold text-amber-400/90 mt-1 uppercase tracking-wider">
-                  Digitally Verified
+                <span className="text-[8px] font-bold text-amber-400 uppercase tracking-wider">
+                  Scan to Verify
                 </span>
-                <span className="text-[8px] text-slate-400">{certificate.verificationCode}</span>
-                <span className="text-[8px] text-slate-400 mt-0.5">{formattedDate}</span>
+                <span className="text-[8px] text-slate-400 font-mono">{certId}</span>
               </div>
 
-              {/* Right Signature: Dr. G Ramu */}
+              {/* Secondary Signature */}
               <div className="text-right space-y-1">
-                <div className="font-serif italic text-amber-300 text-sm font-semibold">Dr. G Ramu</div>
+                <div className="font-serif italic text-amber-300 text-sm font-semibold">{secondarySigner}</div>
                 <div className="h-[1px] w-28 bg-slate-700 ml-auto" />
-                <div className="text-[11px] text-slate-200 font-bold">Dr. G Ramu</div>
-                <div className="text-[9px] text-emerald-400 font-semibold">Dean Technical Trainings</div>
-                <div className="text-[8px] text-slate-400">Aditya University</div>
+                <div className="text-[11px] text-slate-200 font-bold">{secondaryTitle}</div>
+                <div className="text-[9px] text-emerald-400 font-semibold">TYPETEST Evaluation Board</div>
               </div>
             </div>
           </div>

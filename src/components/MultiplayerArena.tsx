@@ -940,7 +940,7 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
               <span className="px-2.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
                 Synchronized Arena
               </span>
-              <span className="text-xs font-mono text-slate-400">Department of Technical Training</span>
+              <span className="text-xs font-mono text-slate-400">TYPETEST Global Arena</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black text-slate-100 flex items-center gap-2.5">
               <Swords className="w-7 h-7 text-emerald-400" />
