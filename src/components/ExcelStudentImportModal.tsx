@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { Student, ClassRoom, StudentImportSummary } from '../types';
+import { isValidUUID } from '../services/supabaseService';
 import {
   downloadStudentImportTemplate,
   parseStudentSpreadsheet,
@@ -173,26 +174,28 @@ export const ExcelStudentImportModal: React.FC<ExcelStudentImportModalProps> = (
 
         if (existing) {
           if (duplicateStrategy === 'update') {
+            const validClassId = row.classId && isValidUUID(row.classId) ? row.classId : existing.classId;
             await updateStudent(existing.id, {
               name: row.name || existing.name,
               email: row.email || existing.email,
-              classId: row.classId || existing.classId,
+              classId: validClassId,
               password: row.password || existing.password,
               status: row.status || existing.status
             });
             updatedCount++;
-            newlyAddedStudents.push({ ...existing, name: row.name, email: row.email, classId: row.classId });
+            newlyAddedStudents.push({ ...existing, name: row.name, email: row.email, classId: validClassId });
           } else {
             // 'skip' or 'reject'
             skippedCount++;
           }
         } else {
           // Brand new student record
+          const resolvedValidClassId = row.classId && isValidUUID(row.classId) ? row.classId : undefined;
           candidatesToImport.push({
             rollNo: row.rollNo,
             name: row.name,
             email: row.email,
-            classId: row.classId || (effectiveClasses[0]?.id || 'cls-python-aidev'),
+            classId: resolvedValidClassId,
             batch: row.batch || 'Batch 2024-28',
             password: row.password || '1234',
             status: row.status || 'active'
@@ -202,10 +205,7 @@ export const ExcelStudentImportModal: React.FC<ExcelStudentImportModalProps> = (
       }
 
       if (candidatesToImport.length > 0) {
-        const added = await bulkAddStudents(candidatesToImport);
-        if (added && added.length > 0) {
-          newlyAddedStudents.push(...added);
-        }
+        await bulkAddStudents(candidatesToImport);
       }
 
       const summary: StudentImportSummary = {

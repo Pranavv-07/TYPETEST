@@ -22,20 +22,16 @@ export interface ParsedStudentRow {
  * Download standard formatted Excel / CSV Template for importing students by Class
  */
 export function downloadStudentImportTemplate(
-  availableClasses: { id: string; name: string }[] = [
-    { id: 'cls-python-aidev', name: 'Python_AIDEV' },
-    { id: 'cls-cse-a', name: 'CSE Alpha (2024-28)' },
-    { id: 'cls-aiml-b', name: 'AIML Beta (2024-28)' },
-    { id: 'cls-ds-d', name: 'Data Science Delta (2024-28)' }
-  ],
+  availableClasses: { id: string; name: string }[] = [],
   format: 'xlsx' | 'csv' = 'xlsx'
 ) {
+  const defaultClassName = availableClasses[0]?.name || 'Full Stack Python AI Dev_2028';
   const sampleData = [
     {
       'Roll Number': '24B11CS355',
       'Full Name': 'Pranav Vedula',
       'Email': 'vedulapranav@gmail.com',
-      'Class / Batch': availableClasses[0]?.name || 'Python_AIDEV',
+      'Class / Batch': defaultClassName,
       'Password': '1234',
       'Status': 'active'
     },
@@ -43,7 +39,7 @@ export function downloadStudentImportTemplate(
       'Roll Number': '24B11CS101',
       'Full Name': 'Aarav Sharma',
       'Email': 'aarav.sharma@example.com',
-      'Class / Batch': availableClasses[1]?.name || 'CSE Alpha (2024-28)',
+      'Class / Batch': availableClasses[1]?.name || defaultClassName,
       'Password': '1234',
       'Status': 'active'
     },

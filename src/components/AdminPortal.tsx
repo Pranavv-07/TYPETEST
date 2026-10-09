@@ -152,6 +152,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
   const [deptCode, setDeptCode] = useState('');
   const [deptName, setDeptName] = useState('');
   const [deptDesc, setDeptDesc] = useState('');
+  const [deptModalError, setDeptModalError] = useState('');
 
   // Batch Modal State
   const [showBatchModal, setShowBatchModal] = useState(false);
@@ -159,6 +160,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
   const [batchYear, setBatchYear] = useState('2024-2028');
   const [batchStartYear, setBatchStartYear] = useState(2024);
   const [batchEndYear, setBatchEndYear] = useState(2028);
+  const [batchModalError, setBatchModalError] = useState('');
 
   // Class Modal State
   const [showClassModal, setShowClassModal] = useState(false);
@@ -166,6 +168,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
   const [classDesc, setClassDesc] = useState('');
   const [classDeptId, setClassDeptId] = useState('');
   const [classBatchId, setClassBatchId] = useState('');
+  const [classModalError, setClassModalError] = useState('');
 
   // Add single student modal
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
@@ -263,7 +266,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
         rollNo: p.rollNo,
         name: p.name,
         batchId: selectedClass?.batchId || undefined,
-        classId: selectedClass ? selectedClass.id : undefined
+        classId: selectedClass ? selectedClass.id : undefined,
+        departmentId: selectedClass?.departmentId || undefined
       }));
 
       const count = await bulkAddStudents(studentObjects);
@@ -274,6 +278,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
       );
       setPasteData('');
       setParsedPreview([]);
+      await refreshData();
       setTimeout(() => setBulkSuccessMsg(''), 5000);
     } catch (err: any) {
       setBulkErrorMsg(err.message || 'Failed to bulk import students.');
@@ -296,6 +301,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
         name: newStudentName.trim(),
         batchId: selectedClass?.batchId || undefined,
         classId: selectedClass ? selectedClass.id : undefined,
+        departmentId: selectedClass?.departmentId || undefined,
         password: newStudentPassword.trim() || undefined
       });
 
@@ -304,6 +310,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
       setNewStudentClass('');
       setNewStudentPassword('');
       setShowAddStudentModal(false);
+      await refreshData();
     } catch (err: any) {
       setStudentModalError(err.message || 'Failed to add student to database.');
     }
@@ -320,12 +327,14 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
       email: editStudentEmail.trim() || undefined,
       phone: editStudentPhone.trim() || undefined,
       batchId: selectedClass?.batchId || undefined,
-      classId: selectedClass ? selectedClass.id : '',
+      classId: selectedClass ? selectedClass.id : undefined,
+      departmentId: selectedClass?.departmentId || undefined,
       status: editStudentStatus,
       password: editStudentPassword.trim() || undefined
     });
 
     setEditingStudent(null);
+    await refreshData();
   };
 
   // Trainer Form Submits
@@ -373,39 +382,65 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
   const handleCreateDepartment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!deptCode.trim() || !deptName.trim()) return;
-    await createDepartment({
-      code: deptCode.trim().toUpperCase(),
-      name: deptName.trim(),
-      description: deptDesc.trim() || undefined
-    });
-    setDeptCode('');
-    setDeptName('');
-    setDeptDesc('');
-    setShowDeptModal(false);
+    setDeptModalError('');
+    try {
+      await createDepartment({
+        code: deptCode.trim().toUpperCase(),
+        name: deptName.trim(),
+        description: deptDesc.trim() || undefined,
+        status: 'active'
+      });
+      setDeptCode('');
+      setDeptName('');
+      setDeptDesc('');
+      setShowDeptModal(false);
+      await refreshData();
+    } catch (err: any) {
+      setDeptModalError(err.message || 'Failed to create department');
+    }
   };
 
   // Batch submit
   const handleCreateBatch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!batchName.trim()) return;
-    await createBatch({
-      name: batchName.trim(),
-      batchYear: batchYear.trim(),
-      startYear: batchStartYear,
-      endYear: batchEndYear
-    });
-    setBatchName('');
-    setShowBatchModal(false);
+    setBatchModalError('');
+    try {
+      await createBatch({
+        name: batchName.trim(),
+        batchYear: batchYear.trim(),
+        academicYear: `${batchStartYear}-${(batchEndYear % 100).toString().padStart(2, '0')}`,
+        status: 'active'
+      });
+      setBatchName('');
+      setShowBatchModal(false);
+      await refreshData();
+    } catch (err: any) {
+      setBatchModalError(err.message || 'Failed to create batch');
+    }
   };
 
   // Class submit
   const handleCreateClass = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!className.trim()) return;
-    await createClass(className.trim(), classDesc.trim(), classDeptId || undefined, classBatchId || undefined);
-    setClassName('');
-    setClassDesc('');
-    setShowClassModal(false);
+    setClassModalError('');
+    try {
+      await createClass(
+        className.trim(),
+        classDesc.trim(),
+        classDeptId || undefined,
+        classBatchId || undefined
+      );
+      setClassName('');
+      setClassDesc('');
+      setClassDeptId('');
+      setClassBatchId('');
+      setShowClassModal(false);
+      await refreshData();
+    } catch (err: any) {
+      setClassModalError(err.message || 'Failed to create class');
+    }
   };
 
   // Reset attempt confirm
@@ -1695,11 +1730,21 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
       {/* DEPARTMENT MODAL */}
       {showDeptModal && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
             <div className="flex justify-between items-center">
               <h3 className="font-bold text-slate-100 text-sm">Create Department</h3>
-              <button onClick={() => setShowDeptModal(false)}><X className="w-4 h-4 text-slate-400" /></button>
+              <button onClick={() => { setShowDeptModal(false); setDeptModalError(''); }}>
+                <X className="w-4 h-4 text-slate-400" />
+              </button>
             </div>
+
+            {deptModalError && (
+              <div className="p-3 bg-rose-500/15 border border-rose-500/30 rounded-xl text-xs text-rose-300 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{deptModalError}</span>
+              </div>
+            )}
+
             <form onSubmit={handleCreateDepartment} className="space-y-3 text-xs">
               <div>
                 <label className="font-mono text-slate-400">Department Code</label>
@@ -1708,7 +1753,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
                   placeholder="e.g. CSE, IT, MECH"
                   value={deptCode}
                   onChange={e => setDeptCode(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 mt-1"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 mt-1 uppercase font-mono"
                 />
               </div>
               <div>
@@ -1732,7 +1777,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
               </div>
               <button
                 type="submit"
-                className="w-full py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-xl"
+                className="w-full py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-xl cursor-pointer transition-colors"
               >
                 Create Department
               </button>
@@ -1744,11 +1789,21 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
       {/* BATCH MODAL */}
       {showBatchModal && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
             <div className="flex justify-between items-center">
               <h3 className="font-bold text-slate-100 text-sm">Create Academic Batch</h3>
-              <button onClick={() => setShowBatchModal(false)}><X className="w-4 h-4 text-slate-400" /></button>
+              <button onClick={() => { setShowBatchModal(false); setBatchModalError(''); }}>
+                <X className="w-4 h-4 text-slate-400" />
+              </button>
             </div>
+
+            {batchModalError && (
+              <div className="p-3 bg-rose-500/15 border border-rose-500/30 rounded-xl text-xs text-rose-300 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{batchModalError}</span>
+              </div>
+            )}
+
             <form onSubmit={handleCreateBatch} className="space-y-3 text-xs">
               <div>
                 <label className="font-mono text-slate-400">Batch Name</label>
@@ -1782,7 +1837,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
               </div>
               <button
                 type="submit"
-                className="w-full py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-xl"
+                className="w-full py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-xl cursor-pointer transition-colors"
               >
                 Save Batch
               </button>
@@ -1794,11 +1849,21 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
       {/* CLASS MODAL */}
       {showClassModal && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
             <div className="flex justify-between items-center">
               <h3 className="font-bold text-slate-100 text-sm">Create Classroom</h3>
-              <button onClick={() => setShowClassModal(false)}><X className="w-4 h-4 text-slate-400" /></button>
+              <button onClick={() => { setShowClassModal(false); setClassModalError(''); }}>
+                <X className="w-4 h-4 text-slate-400" />
+              </button>
             </div>
+
+            {classModalError && (
+              <div className="p-3 bg-rose-500/15 border border-rose-500/30 rounded-xl text-xs text-rose-300 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{classModalError}</span>
+              </div>
+            )}
+
             <form onSubmit={handleCreateClass} className="space-y-3 text-xs">
               <div>
                 <label className="font-mono text-slate-400">Class Name</label>
@@ -1817,7 +1882,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
                   onChange={e => setClassDeptId(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 mt-1"
                 >
-                  <option value="">Select Department</option>
+                  <option value="">Select Department (Optional)</option>
                   {departments.map(d => (
                     <option key={d.id} value={d.id}>{d.name} ({d.code})</option>
                   ))}
@@ -1830,7 +1895,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
                   onChange={e => setClassBatchId(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 mt-1"
                 >
-                  <option value="">Select Batch</option>
+                  <option value="">Select Batch (Optional)</option>
                   {batches.map(b => (
                     <option key={b.id} value={b.id}>{b.name} ({b.batchYear})</option>
                   ))}
@@ -1838,7 +1903,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
               </div>
               <button
                 type="submit"
-                className="w-full py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-xl"
+                className="w-full py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-xl cursor-pointer transition-colors"
               >
                 Create Classroom
               </button>

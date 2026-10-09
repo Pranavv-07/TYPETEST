@@ -451,7 +451,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // ==========================================================================
   const createDepartment = async (dept: Omit<Department, 'id' | 'createdAt'>): Promise<Department> => {
     const created = await apiCreateDept(dept);
-    setDepartments(prev => [...prev, created]);
+    setDepartments(prev => [created, ...prev.filter(d => d.id !== created.id)]);
     recordAuditLog({
       adminId: currentUser?.id,
       adminName: currentUser?.name || 'Admin',
@@ -460,17 +460,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       entityId: created.id,
       details: { code: created.code, name: created.name }
     });
+    fetchDepartments().then(setDepartments).catch(console.error);
     return created;
   };
 
   const updateDepartment = async (id: string, updates: Partial<Department>) => {
     await apiUpdateDept(id, updates);
     setDepartments(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d));
+    fetchDepartments().then(setDepartments).catch(console.error);
   };
 
   const deleteDepartment = async (id: string) => {
     await apiDeleteDept(id);
     setDepartments(prev => prev.filter(d => d.id !== id));
+    fetchDepartments().then(setDepartments).catch(console.error);
   };
 
   // ==========================================================================
@@ -478,7 +481,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // ==========================================================================
   const createBatch = async (batch: Omit<Batch, 'id' | 'createdAt'>): Promise<Batch> => {
     const created = await apiCreateBatch(batch);
-    setBatches(prev => [created, ...prev]);
+    setBatches(prev => [created, ...prev.filter(b => b.id !== created.id)]);
     recordAuditLog({
       adminId: currentUser?.id,
       adminName: currentUser?.name || 'Admin',
@@ -487,17 +490,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       entityId: created.id,
       details: { name: created.name, batchYear: created.batchYear }
     });
+    fetchBatches().then(setBatches).catch(console.error);
     return created;
   };
 
   const updateBatch = async (id: string, updates: Partial<Batch>) => {
     await apiUpdateBatch(id, updates);
     setBatches(prev => prev.map(b => b.id === id ? { ...b, ...updates } : b));
+    fetchBatches().then(setBatches).catch(console.error);
   };
 
   const deleteBatch = async (id: string) => {
     await apiDeleteBatch(id);
     setBatches(prev => prev.filter(b => b.id !== id));
+    fetchBatches().then(setBatches).catch(console.error);
   };
 
   // ==========================================================================
@@ -518,7 +524,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       studentIds: [],
       status: 'active'
     });
-    setClasses(prev => [created, ...prev]);
+    setClasses(prev => [created, ...prev.filter(c => c.id !== created.id)]);
     recordAuditLog({
       adminId: currentUser?.id,
       adminName: currentUser?.name || 'Admin',
@@ -527,17 +533,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       entityId: created.id,
       details: { name, code: created.code }
     });
+    fetchClasses().then(setClasses).catch(console.error);
     return created;
   };
 
   const updateClass = async (id: string, updates: Partial<ClassRoom>) => {
     await apiUpdateClass(id, updates);
     setClasses(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+    fetchClasses().then(setClasses).catch(console.error);
   };
 
   const deleteClass = async (id: string) => {
     await apiDeleteClass(id);
     setClasses(prev => prev.filter(c => c.id !== id));
+    fetchClasses().then(setClasses).catch(console.error);
   };
 
   const addStudentsToClass = async (classId: string, studentIds: string[]) => {
@@ -557,6 +566,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return c;
       })
     );
+    fetchStudents().then(setStudents).catch(console.error);
+    fetchClasses().then(setClasses).catch(console.error);
   };
 
   // ==========================================================================

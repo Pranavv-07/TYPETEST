@@ -23,16 +23,21 @@ import {
   INITIAL_CERTIFICATES
 } from '../data/initialData';
 
+export const isValidUUID = (id?: string | null): boolean => {
+  if (!id) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id.trim());
+};
+
 // Fallback in-memory institutional dataset for development and preview environments
 let memoryDepartments: Department[] = [
-  { id: 'd0000000-0000-0000-0000-000000000001', name: 'Computer Science & Engineering', code: 'CSE', hod: 'Dr. V. S. Murthy', status: 'active', createdAt: '2025-01-01' },
-  { id: 'd0000000-0000-0000-0000-000000000002', name: 'Artificial Intelligence & Machine Learning', code: 'AIML', hod: 'Dr. Radhika Sen', status: 'active', createdAt: '2025-01-01' },
-  { id: 'd0000000-0000-0000-0000-000000000003', name: 'Information Technology', code: 'IT', hod: 'Prof. K. Raman', status: 'active', createdAt: '2025-01-01' }
+  { id: '1429395a-6747-4ec4-a529-942b43a67f72', name: 'Computer Science & Engineering', code: 'CSE', hod: 'Dr. V. S. Murthy', status: 'active', createdAt: '2025-01-01' },
+  { id: '0fd548b0-f410-442a-bddc-944787821624', name: 'Artificial Intelligence & Machine Learning', code: 'AIML', hod: 'Dr. Radhika Sen', status: 'active', createdAt: '2025-01-01' },
+  { id: 'addcdb81-7cc2-467b-9d00-aa31be6bf2e6', name: 'Information Technology', code: 'IT', hod: 'Prof. K. Raman', status: 'active', createdAt: '2025-01-01' }
 ];
 
 let memoryBatches: Batch[] = [
-  { id: 'b0000000-0000-0000-0000-000000000001', name: 'Batch 2024-28', batchYear: '2024-28', academicYear: '2025-26', status: 'active', createdAt: '2024-08-01' },
-  { id: 'b0000000-0000-0000-0000-000000000002', name: 'Batch 2023-27', batchYear: '2023-27', academicYear: '2025-26', status: 'active', createdAt: '2023-08-01' }
+  { id: 'eb0d78da-a086-42d8-b00b-24bc142a0e39', name: 'Batch 2024-28', batchYear: '2024-28', academicYear: '2024-28', status: 'active', createdAt: '2024-08-01' },
+  { id: 'ae2d2e16-3fe9-4c26-9ccb-780065a95e5d', name: 'Batch 2023-27', batchYear: '2023-27', academicYear: '2023-27', status: 'active', createdAt: '2023-08-01' }
 ];
 
 const loadSavedMemoryTrainers = (): Trainer[] => {
@@ -728,24 +733,26 @@ export async function fetchDepartments(): Promise<Department[]> {
 }
 
 export async function createDepartment(dept: Omit<Department, 'id' | 'createdAt'>): Promise<Department> {
-  const newDept: Department = {
-    ...dept,
-    id: `dept-${Date.now()}`,
-    createdAt: new Date().toISOString()
-  };
-  memoryDepartments.push(newDept);
-
   if (isSupabaseConfigured()) {
     try {
       const { data, error } = await supabase.from('departments').insert([{
-        name: dept.name,
-        code: dept.code,
-        hod: dept.hod,
-        description: dept.description,
-        status: dept.status
+        name: dept.name.trim(),
+        code: dept.code.trim().toUpperCase(),
+        hod: dept.hod?.trim() || null,
+        description: dept.description?.trim() || '',
+        status: dept.status || 'active'
       }]).select().single();
-      if (!error && data) {
-        return {
+
+      if (error) {
+        console.error('Supabase department insert error:', error);
+        if (error.code === '23505') {
+          throw new Error(`A department with code "${dept.code.trim().toUpperCase()}" already exists. Please choose a different code.`);
+        }
+        throw new Error(`Failed to save department to database: ${error.message}`);
+      }
+
+      if (data) {
+        const persisted: Department = {
           id: data.id,
           name: data.name,
           code: data.code,
@@ -754,23 +761,34 @@ export async function createDepartment(dept: Omit<Department, 'id' | 'createdAt'
           status: data.status,
           createdAt: data.created_at
         };
+        memoryDepartments.push(persisted);
+        return persisted;
       }
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      console.error('Department creation failed:', e);
+      throw e;
     }
   }
+
+  const newDept: Department = {
+    ...dept,
+    id: `dept-${Date.now()}`,
+    status: dept.status || 'active',
+    createdAt: new Date().toISOString()
+  };
+  memoryDepartments.push(newDept);
   return newDept;
 }
 
 export async function updateDepartment(id: string, updates: Partial<Department>): Promise<void> {
   memoryDepartments = memoryDepartments.map(d => d.id === id ? { ...d, ...updates } : d);
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && isValidUUID(id)) {
     try {
       await supabase.from('departments').update({
-        ...(updates.name && { name: updates.name }),
-        ...(updates.code && { code: updates.code }),
-        ...(updates.hod !== undefined && { hod: updates.hod }),
-        ...(updates.description !== undefined && { description: updates.description }),
+        ...(updates.name && { name: updates.name.trim() }),
+        ...(updates.code && { code: updates.code.trim().toUpperCase() }),
+        ...(updates.hod !== undefined && { hod: updates.hod?.trim() || null }),
+        ...(updates.description !== undefined && { description: updates.description?.trim() || '' }),
         ...(updates.status && { status: updates.status }),
         updated_at: new Date().toISOString()
       }).eq('id', id);
@@ -782,7 +800,7 @@ export async function updateDepartment(id: string, updates: Partial<Department>)
 
 export async function deleteDepartment(id: string): Promise<void> {
   memoryDepartments = memoryDepartments.filter(d => d.id !== id);
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && isValidUUID(id)) {
     try {
       await supabase.from('departments').delete().eq('id', id);
     } catch (e) {
@@ -817,26 +835,40 @@ export async function fetchBatches(): Promise<Batch[]> {
 }
 
 export async function createBatch(batch: Omit<Batch, 'id' | 'createdAt'>): Promise<Batch> {
-  const newBatch: Batch = {
-    ...batch,
-    id: `batch-${Date.now()}`,
-    createdAt: new Date().toISOString()
-  };
-  memoryBatches.push(newBatch);
+  const academicYear = batch.academicYear || `${(batch as any).startYear || 2024}-${((batch as any).endYear || 2028) % 100}`;
+  const batchYear = batch.batchYear || `${(batch as any).startYear || 2024}-${(batch as any).endYear || 2028}`;
+  const validDeptId = isValidUUID(batch.departmentId) ? batch.departmentId : null;
 
   if (isSupabaseConfigured()) {
     try {
-      const { data, error } = await supabase.from('batches').insert([{
-        name: batch.name,
-        batch_year: batch.batchYear,
-        academic_year: batch.academicYear,
-        department_id: batch.departmentId || null,
+      let insertPayload: any = {
+        name: batch.name.trim(),
+        batch_year: batchYear,
+        academic_year: academicYear,
+        department_id: validDeptId,
         start_date: batch.startDate || null,
         end_date: batch.endDate || null,
-        status: batch.status
-      }]).select().single();
-      if (!error && data) {
-        return {
+        status: batch.status || 'active'
+      };
+
+      let { data, error } = await supabase.from('batches').insert([insertPayload]).select().single();
+
+      // If foreign key constraint failed on department_id, retry without FK
+      if (error && error.code === '23503') {
+        console.warn('Batch department FK error, retrying without department FK:', error.message);
+        insertPayload.department_id = null;
+        const retryResult = await supabase.from('batches').insert([insertPayload]).select().single();
+        data = retryResult.data;
+        error = retryResult.error;
+      }
+
+      if (error) {
+        console.error('Supabase batch insert error:', error);
+        throw new Error(`Failed to save batch to database: ${error.message}`);
+      }
+
+      if (data) {
+        const persisted: Batch = {
           id: data.id,
           name: data.name,
           batchYear: data.batch_year,
@@ -847,22 +879,36 @@ export async function createBatch(batch: Omit<Batch, 'id' | 'createdAt'>): Promi
           status: data.status,
           createdAt: data.created_at
         };
+        memoryBatches.push(persisted);
+        return persisted;
       }
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      console.error('Batch creation failed:', e);
+      throw e;
     }
   }
+
+  const newBatch: Batch = {
+    ...batch,
+    id: `batch-${Date.now()}`,
+    batchYear,
+    academicYear,
+    status: batch.status || 'active',
+    createdAt: new Date().toISOString()
+  };
+  memoryBatches.push(newBatch);
   return newBatch;
 }
 
 export async function updateBatch(id: string, updates: Partial<Batch>): Promise<void> {
   memoryBatches = memoryBatches.map(b => b.id === id ? { ...b, ...updates } : b);
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && isValidUUID(id)) {
     try {
       await supabase.from('batches').update({
-        ...(updates.name && { name: updates.name }),
+        ...(updates.name && { name: updates.name.trim() }),
         ...(updates.batchYear && { batch_year: updates.batchYear }),
         ...(updates.academicYear && { academic_year: updates.academicYear }),
+        ...(updates.departmentId !== undefined && { department_id: isValidUUID(updates.departmentId) ? updates.departmentId : null }),
         ...(updates.status && { status: updates.status }),
         updated_at: new Date().toISOString()
       }).eq('id', id);
@@ -874,7 +920,7 @@ export async function updateBatch(id: string, updates: Partial<Batch>): Promise<
 
 export async function deleteBatch(id: string): Promise<void> {
   memoryBatches = memoryBatches.filter(b => b.id !== id);
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && isValidUUID(id)) {
     try {
       await supabase.from('batches').delete().eq('id', id);
     } catch (e) {
@@ -912,46 +958,83 @@ export async function fetchClasses(): Promise<ClassRoom[]> {
 }
 
 export async function createClass(cls: Omit<ClassRoom, 'id' | 'createdAt'>): Promise<ClassRoom> {
+  const validDeptId = isValidUUID(cls.departmentId) ? cls.departmentId : null;
+  const validBatchId = isValidUUID(cls.batchId) ? cls.batchId : null;
+
+  if (isSupabaseConfigured()) {
+    try {
+      let insertPayload: any = {
+        name: cls.name.trim(),
+        code: cls.code?.trim() || `CLS-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
+        description: cls.description?.trim() || '',
+        department_id: validDeptId,
+        batch_id: validBatchId,
+        academic_year: cls.academicYear || '2025-26',
+        section: cls.section || 'A',
+        status: cls.status || 'active'
+      };
+
+      let { data, error } = await supabase.from('classes').insert([insertPayload]).select().single();
+
+      // If foreign key constraint failed on department_id or batch_id, retry without FKs so the class is GUARANTEED to be created and saved in DB!
+      if (error && error.code === '23503') {
+        console.warn('Class department/batch FK error, retrying without FK links:', error.message);
+        insertPayload.department_id = null;
+        insertPayload.batch_id = null;
+        const retryResult = await supabase.from('classes').insert([insertPayload]).select().single();
+        data = retryResult.data;
+        error = retryResult.error;
+      }
+
+      // If code unique constraint clashed, retry with new random code
+      if (error && error.code === '23505') {
+        insertPayload.code = `CLS-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+        const retryResult = await supabase.from('classes').insert([insertPayload]).select().single();
+        data = retryResult.data;
+        error = retryResult.error;
+      }
+
+      if (error) {
+        console.error('Supabase class insert error:', error);
+        throw new Error(`Failed to save class to database: ${error.message}`);
+      }
+
+      if (data) {
+        const persisted: ClassRoom = {
+          id: data.id,
+          name: data.name,
+          code: data.code,
+          trainerId: cls.trainerId || 'trn-1',
+          departmentId: data.department_id,
+          batchId: data.batch_id,
+          academicYear: data.academic_year,
+          section: data.section,
+          description: data.description,
+          studentIds: [],
+          status: data.status,
+          createdAt: data.created_at
+        };
+        memoryClasses.push(persisted);
+        return persisted;
+      }
+    } catch (e: any) {
+      console.error('Class creation failed:', e);
+      throw e;
+    }
+  }
+
   const newClass: ClassRoom = {
     ...cls,
     id: `class-${Date.now()}`,
     createdAt: new Date().toISOString()
   };
   memoryClasses.push(newClass);
-
-  if (isSupabaseConfigured()) {
-    try {
-      const { data, error } = await supabase.from('classes').insert([{
-        name: cls.name,
-        code: cls.code || `CLS-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
-        description: cls.description,
-        department_id: cls.departmentId || null,
-        batch_id: cls.batchId || null,
-        section: cls.section || 'A',
-        status: cls.status || 'active'
-      }]).select().single();
-      if (!error && data) {
-        return {
-          id: data.id,
-          name: data.name,
-          code: data.code,
-          trainerId: cls.trainerId,
-          description: data.description,
-          studentIds: [],
-          status: data.status,
-          createdAt: data.created_at
-        };
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  }
   return newClass;
 }
 
 export async function updateClass(id: string, updates: Partial<ClassRoom>): Promise<void> {
   memoryClasses = memoryClasses.map(c => c.id === id ? { ...c, ...updates } : c);
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && isValidUUID(id)) {
     try {
       await supabase.from('classes').update({
         ...(updates.name && { name: updates.name }),
@@ -968,7 +1051,7 @@ export async function updateClass(id: string, updates: Partial<ClassRoom>): Prom
 
 export async function deleteClass(id: string): Promise<void> {
   memoryClasses = memoryClasses.filter(c => c.id !== id);
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && isValidUUID(id)) {
     try {
       await supabase.from('classes').delete().eq('id', id);
     } catch (e) {
@@ -1020,18 +1103,35 @@ export async function createStudent(studentData: Omit<Student, 'id' | 'createdAt
 
   if (isSupabaseConfigured()) {
     try {
-      const { data, error } = await supabase.from('students').insert([{
+      let classIdToUse = (studentData.classId && isValidUUID(studentData.classId)) ? studentData.classId : null;
+      let batchIdToUse = (studentData.batchId && isValidUUID(studentData.batchId)) ? studentData.batchId : null;
+      let deptIdToUse = (studentData.departmentId && isValidUUID(studentData.departmentId)) ? studentData.departmentId : null;
+
+      const studentPayload: any = {
         roll_number: studentData.rollNo.toUpperCase().trim(),
         name: studentData.name.trim(),
         email: studentData.email?.trim() || null,
         phone: studentData.phone?.trim() || null,
-        class_id: studentData.classId || null,
-        batch_id: studentData.batchId || null,
-        department_id: studentData.departmentId || null,
+        class_id: classIdToUse,
+        batch_id: batchIdToUse,
+        department_id: deptIdToUse,
         password_hash: defaultPassword,
         username: studentData.rollNo.toUpperCase().trim(),
         status: studentData.status || 'active'
-      }]).select().single();
+      };
+
+      let { data, error } = await supabase.from('students').insert([studentPayload]).select().single();
+
+      // If foreign key constraint failed on class, batch, or department, retry without FK links
+      if (error && error.code === '23503') {
+        console.warn('Student FK error, retrying without FK links:', error.message);
+        studentPayload.class_id = null;
+        studentPayload.batch_id = null;
+        studentPayload.department_id = null;
+        const retryResult = await supabase.from('students').insert([studentPayload]).select().single();
+        data = retryResult.data;
+        error = retryResult.error;
+      }
 
       if (error) {
         console.error('Supabase student insert error:', error);
@@ -1040,6 +1140,9 @@ export async function createStudent(studentData: Omit<Student, 'id' | 'createdAt
         }
         if (error.code === '23505' || error.message?.includes('duplicate key') || error.message?.includes('unique constraint')) {
           throw new Error(`A student with Roll Number "${studentData.rollNo.toUpperCase().trim()}" already exists.`);
+        }
+        if (error.code === '22P02') {
+          throw new Error(`Invalid data format for student with Roll Number "${studentData.rollNo}".`);
         }
         throw new Error(error.message || 'Database error occurred while adding student.');
       }
@@ -1082,18 +1185,23 @@ export async function updateStudent(id: string, updates: Partial<Student>): Prom
         ...(updates.name && { name: updates.name.trim() }),
         ...(updates.email !== undefined && { email: updates.email?.trim() || null }),
         ...(updates.phone !== undefined && { phone: updates.phone?.trim() || null }),
-        ...(updates.classId !== undefined && { class_id: updates.classId || null }),
-        ...(updates.batchId !== undefined && { batch_id: updates.batchId || null }),
-        ...(updates.departmentId !== undefined && { department_id: updates.departmentId || null }),
+        ...(updates.classId !== undefined && { class_id: isValidUUID(updates.classId) ? updates.classId : null }),
+        ...(updates.batchId !== undefined && { batch_id: isValidUUID(updates.batchId) ? updates.batchId : null }),
+        ...(updates.departmentId !== undefined && { department_id: isValidUUID(updates.departmentId) ? updates.departmentId : null }),
         ...(updates.status && { status: updates.status }),
         updated_at: new Date().toISOString()
       };
       if (updates.password !== undefined && updates.password.trim()) {
         dbUpdates.password_hash = updates.password.trim();
       }
-      await supabase.from('students').update(dbUpdates).eq('id', id);
+
+      if (isValidUUID(id)) {
+        await supabase.from('students').update(dbUpdates).eq('id', id);
+      } else if (updates.rollNo) {
+        await supabase.from('students').update(dbUpdates).eq('roll_number', updates.rollNo.toUpperCase().trim());
+      }
     } catch (e) {
-      console.error(e);
+      console.error('Error updating student in Supabase:', e);
     }
   }
 }
@@ -1102,7 +1210,7 @@ export async function updateStudent(id: string, updates: Partial<Student>): Prom
  * Checks if a student has historical examination attempts before deleting.
  */
 export async function checkStudentAttemptCount(studentId: string): Promise<number> {
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && isValidUUID(studentId)) {
     try {
       const { count } = await supabase
         .from('attempts')
@@ -1117,13 +1225,18 @@ export async function checkStudentAttemptCount(studentId: string): Promise<numbe
 }
 
 export async function deleteStudent(id: string): Promise<void> {
+  const existing = memoryStudents.find(s => s.id === id);
   memoryStudents = memoryStudents.filter(s => s.id !== id);
   saveMemoryStudents(memoryStudents);
   if (isSupabaseConfigured()) {
     try {
-      await supabase.from('students').delete().eq('id', id);
+      if (isValidUUID(id)) {
+        await supabase.from('students').delete().eq('id', id);
+      } else if (existing?.rollNo) {
+        await supabase.from('students').delete().eq('roll_number', existing.rollNo.toUpperCase().trim());
+      }
     } catch (e) {
-      console.error(e);
+      console.error('Error deleting student in Supabase:', e);
     }
   }
 }
@@ -1150,7 +1263,19 @@ export async function bulkImportStudents(
     errors: []
   };
 
-  const existingRolls = new Set(memoryStudents.map(s => s.rollNo.toUpperCase()));
+  let existingRolls = new Set(memoryStudents.map(s => s.rollNo.toUpperCase()));
+  if (isSupabaseConfigured()) {
+    try {
+      const { data: dbStudents } = await supabase.from('students').select('roll_number');
+      if (dbStudents) {
+        dbStudents.forEach(s => {
+          if (s.roll_number) existingRolls.add(s.roll_number.toUpperCase().trim());
+        });
+      }
+    } catch (e) {
+      console.warn('Could not check existing students in Supabase before bulk import:', e);
+    }
+  }
   const validToInsert: Omit<Student, 'id' | 'createdAt'>[] = [];
 
   for (const r of records) {
@@ -2237,7 +2362,7 @@ export function recordAuditLog(entry: Omit<AuditLogEntry, 'id' | 'createdAt'>): 
 
   if (isSupabaseConfigured()) {
     supabase.from('audit_logs').insert([{
-      admin_id: entry.adminId || null,
+      admin_id: (entry.adminId && isValidUUID(entry.adminId)) ? entry.adminId : null,
       admin_name: entry.adminName,
       action: entry.action,
       entity_type: entry.entityType,
