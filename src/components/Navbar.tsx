@@ -38,7 +38,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenLoginModal,
   onOpenVerificationModal
 }) => {
-  const { currentUser, soundEnabled, setSoundEnabled, logout } = useApp();
+  const { currentUser, soundEnabled, setSoundEnabled, logout, isModuleDisabled } = useApp();
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
 
   const handleLogout = () => {
@@ -113,6 +113,11 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <Swords className="w-3.5 h-3.5 text-emerald-400" />
               <span>Multiplayer</span>
+              {isModuleDisabled('multiplayer') && (
+                <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                  Dev
+                </span>
+              )}
             </button>
 
             {/* 4. Public Leaderboard */}
@@ -126,6 +131,11 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <Trophy className="w-3.5 h-3.5 text-amber-400" />
               <span>Leaderboard</span>
+              {isModuleDisabled('leaderboard') && (
+                <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                  Dev
+                </span>
+              )}
             </button>
 
             {/* 5. Typing Academy */}
@@ -139,6 +149,11 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <GraduationCap className="w-3.5 h-3.5 text-amber-400" />
               <span>Academy</span>
+              {isModuleDisabled('academy') && (
+                <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                  Dev
+                </span>
+              )}
             </button>
 
             {/* 6. Verify Certificate */}

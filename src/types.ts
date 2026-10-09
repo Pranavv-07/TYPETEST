@@ -479,3 +479,15 @@ export interface AcademyAssignment {
   createdAt: string;
 }
 
+export type PlatformModuleKey = 'multiplayer' | 'academy' | 'leaderboard' | 'tests' | 'arena' | 'verify';
+
+export interface ModuleControlConfig {
+  key: PlatformModuleKey;
+  name: string;
+  description: string;
+  disabled: boolean;
+  statusMessage?: string;
+  badgeText?: string;
+}
+
+

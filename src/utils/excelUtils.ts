@@ -156,10 +156,13 @@ export async function parseStudentSpreadsheet(
             const status: 'active' | 'inactive' = rawStatus === 'inactive' ? 'inactive' : 'active';
 
             // Resolve Class
-            let resolvedClassId = targetClassId && targetClassId !== 'auto' ? targetClassId : undefined;
-            let resolvedClassName = rawClass || 'Default Class';
+            let resolvedClassId = targetClassId && targetClassId !== 'auto' && targetClassId !== 'none' ? targetClassId : undefined;
+            let resolvedClassName = targetClassId === 'none' ? 'Unassigned' : (rawClass || 'Unassigned');
 
-            if (!resolvedClassId && rawClass) {
+            if (targetClassId === 'none') {
+              resolvedClassId = undefined;
+              resolvedClassName = 'Unassigned';
+            } else if (!resolvedClassId && rawClass) {
               const matchedClass = classList.find(c =>
                 c.name.toLowerCase() === rawClass.toLowerCase() ||
                 c.id.toLowerCase() === rawClass.toLowerCase()
@@ -167,12 +170,13 @@ export async function parseStudentSpreadsheet(
               if (matchedClass) {
                 resolvedClassId = matchedClass.id;
                 resolvedClassName = matchedClass.name;
+              } else {
+                resolvedClassId = undefined;
+                resolvedClassName = rawClass;
               }
-            }
-
-            if (!resolvedClassId && classList.length > 0) {
-              resolvedClassId = classList[0].id;
-              resolvedClassName = classList[0].name;
+            } else if (!resolvedClassId) {
+              resolvedClassId = undefined;
+              resolvedClassName = 'Unassigned';
             }
 
             const email = rawEmail || (rollNo ? `${rollNo.toLowerCase()}@typetest.edu` : '');

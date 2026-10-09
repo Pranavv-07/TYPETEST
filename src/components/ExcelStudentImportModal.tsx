@@ -50,7 +50,7 @@ export const ExcelStudentImportModal: React.FC<ExcelStudentImportModalProps> = (
     : classes;
 
   const [selectedClassId, setSelectedClassId] = useState<string>(
-    defaultClassId || (effectiveClasses[0]?.id ? effectiveClasses[0].id : 'auto')
+    defaultClassId || 'auto'
   );
 
   const [duplicateStrategy, setDuplicateStrategy] = useState<'skip' | 'update' | 'reject'>('skip');
@@ -286,6 +286,7 @@ export const ExcelStudentImportModal: React.FC<ExcelStudentImportModalProps> = (
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-slate-100 font-mono focus:outline-none focus:border-emerald-500 cursor-pointer"
                   >
                     <option value="auto">Auto-detect from 'Class / Batch' Column</option>
+                    <option value="none">None / Unassigned (Leave Classroom Blank)</option>
                     {effectiveClasses.map(c => (
                       <option key={c.id} value={c.id}>
                         {c.name} ({c.id})

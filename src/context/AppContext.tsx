@@ -12,7 +12,9 @@ import {
   Batch,
   AdminUser,
   ViolationRecord,
-  AuditLogEntry
+  AuditLogEntry,
+  PlatformModuleKey,
+  ModuleControlConfig
 } from '../types';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import {
@@ -137,12 +139,68 @@ interface AppContextType {
     testTitle: string;
     issuingAuthority?: string;
   }) => Promise<StudentCertificate>;
+  // Module / Feature Controls
+  moduleControls: Record<PlatformModuleKey, ModuleControlConfig>;
+  toggleModule: (moduleKey: PlatformModuleKey, disabled: boolean, customMessage?: string) => void;
+  isModuleDisabled: (moduleKey: PlatformModuleKey) => boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const USER_SESSION_KEY = 'testtype_session_user';
 const SOUND_KEY = 'testtype_sound_v2';
+const MODULE_CONTROLS_KEY = 'testtype_module_controls_v1';
+
+const DEFAULT_MODULE_CONTROLS: Record<PlatformModuleKey, ModuleControlConfig> = {
+  multiplayer: {
+    key: 'multiplayer',
+    name: 'Multiplayer Arena',
+    description: 'Real-time head-to-head competitive typing battles and live race tracks.',
+    disabled: true, // Default to disabled / under development
+    statusMessage: 'Multiplayer Arena is currently under development. Please focus on your practice and institutional assessments.',
+    badgeText: 'Under Development'
+  },
+  academy: {
+    key: 'academy',
+    name: 'Touch Typing Academy',
+    description: 'Progressive key-by-key structured learning curriculum with accuracy drills.',
+    disabled: false,
+    statusMessage: 'Touch Typing Academy is temporarily paused by institutional administration.',
+    badgeText: 'Curriculum'
+  },
+  leaderboard: {
+    key: 'leaderboard',
+    name: 'Public Leaderboard',
+    description: 'Global and institutional speed rankings and hall of fame.',
+    disabled: false,
+    statusMessage: 'Public Leaderboards are temporarily paused during active examination sessions.',
+    badgeText: 'Rankings'
+  },
+  tests: {
+    key: 'tests',
+    name: 'Explore Tests Directory',
+    description: 'Public catalog of prose, speed paragraphs, and code typing exercises.',
+    disabled: false,
+    statusMessage: 'Public Tests directory is temporarily paused during active examinations.',
+    badgeText: 'Catalog'
+  },
+  arena: {
+    key: 'arena',
+    name: 'Practice Arena',
+    description: 'Core adaptive typing test arena with instant speed calculation.',
+    disabled: false,
+    statusMessage: 'Practice Arena is temporarily unavailable.',
+    badgeText: 'Core'
+  },
+  verify: {
+    key: 'verify',
+    name: 'Certificate Verification',
+    description: 'Authoritative public database certificate validation portal.',
+    disabled: false,
+    statusMessage: 'Public certificate verification is currently undergoing maintenance.',
+    badgeText: 'Portal'
+  }
+};
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -183,6 +241,43 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return true;
     }
   });
+
+  // Feature / Module Controls State
+  const [moduleControls, setModuleControlsState] = useState<Record<PlatformModuleKey, ModuleControlConfig>>(() => {
+    try {
+      const saved = localStorage.getItem(MODULE_CONTROLS_KEY);
+      if (saved) {
+        return { ...DEFAULT_MODULE_CONTROLS, ...JSON.parse(saved) };
+      }
+    } catch (e) {
+      console.error('Failed to load module controls from localStorage:', e);
+    }
+    return DEFAULT_MODULE_CONTROLS;
+  });
+
+  const toggleModule = (moduleKey: PlatformModuleKey, disabled: boolean, customMessage?: string) => {
+    setModuleControlsState(prev => {
+      const current = prev[moduleKey] || DEFAULT_MODULE_CONTROLS[moduleKey];
+      const updated = {
+        ...prev,
+        [moduleKey]: {
+          ...current,
+          disabled,
+          ...(customMessage ? { statusMessage: customMessage } : {})
+        }
+      };
+      try {
+        localStorage.setItem(MODULE_CONTROLS_KEY, JSON.stringify(updated));
+      } catch (err) {
+        console.error(err);
+      }
+      return updated;
+    });
+  };
+
+  const isModuleDisabled = (moduleKey: PlatformModuleKey): boolean => {
+    return Boolean(moduleControls[moduleKey]?.disabled);
+  };
 
   const setSoundEnabled = (enabled: boolean) => {
     setSoundEnabledState(enabled);
@@ -925,7 +1020,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         addCertificate,
         updateCertificateStatus,
         deleteCertificate,
-        issueManualCertificate
+        issueManualCertificate,
+        moduleControls,
+        toggleModule,
+        isModuleDisabled
       }}
     >
       {children}

@@ -13,11 +13,12 @@ import { ExploreTestsPage } from './components/ExploreTestsPage';
 import { PublicLeaderboardPage } from './components/PublicLeaderboardPage';
 import { CertificateVerificationModal } from './components/CertificateVerificationModal';
 import { PublicCertificateVerificationPage } from './components/PublicCertificateVerificationPage';
+import { ModuleUnderDevelopment } from './components/ModuleUnderDevelopment';
 import { DeveloperFooter } from './components/DeveloperFooter';
 import { TypingTest } from './types';
 
 const MainLayout: React.FC = () => {
-  const { currentUser, tests } = useApp();
+  const { currentUser, tests, moduleControls, toggleModule, isModuleDisabled } = useApp();
 
   // Parse initial view from URL
   const getInitialView = (): { view: AppView; certId?: string } => {
@@ -184,21 +185,54 @@ const MainLayout: React.FC = () => {
         )}
 
         {currentView === 'tests' && (
-          <ExploreTestsPage onLaunchTest={handleLaunchAssessment} />
+          isModuleDisabled('tests') ? (
+            <ModuleUnderDevelopment
+              moduleName="Explore Tests Directory"
+              customMessage={moduleControls.tests?.statusMessage}
+              onBackToArena={() => setCurrentView('arena')}
+              onGoToDashboard={currentUser?.role === 'student' ? () => setCurrentView('student') : undefined}
+              isAdmin={currentUser?.role === 'admin'}
+              onAdminEnable={() => toggleModule('tests', false)}
+            />
+          ) : (
+            <ExploreTestsPage onLaunchTest={handleLaunchAssessment} />
+          )
         )}
 
         {currentView === 'verify' && (
-          <PublicCertificateVerificationPage
-            initialCertificateId={activeCertId}
-            onBackToApp={() => setCurrentView('arena')}
-          />
+          isModuleDisabled('verify') ? (
+            <ModuleUnderDevelopment
+              moduleName="Certificate Verification"
+              customMessage={moduleControls.verify?.statusMessage}
+              onBackToArena={() => setCurrentView('arena')}
+              onGoToDashboard={currentUser?.role === 'student' ? () => setCurrentView('student') : undefined}
+              isAdmin={currentUser?.role === 'admin'}
+              onAdminEnable={() => toggleModule('verify', false)}
+            />
+          ) : (
+            <PublicCertificateVerificationPage
+              initialCertificateId={activeCertId}
+              onBackToApp={() => setCurrentView('arena')}
+            />
+          )
         )}
 
         {currentView === 'leaderboard' && (
-          <PublicLeaderboardPage
-            testId={tests[0]?.id || 'test-code-1'}
-            onBackToApp={() => setCurrentView('arena')}
-          />
+          isModuleDisabled('leaderboard') ? (
+            <ModuleUnderDevelopment
+              moduleName="Public Leaderboards"
+              customMessage={moduleControls.leaderboard?.statusMessage}
+              onBackToArena={() => setCurrentView('arena')}
+              onGoToDashboard={currentUser?.role === 'student' ? () => setCurrentView('student') : undefined}
+              isAdmin={currentUser?.role === 'admin'}
+              onAdminEnable={() => toggleModule('leaderboard', false)}
+            />
+          ) : (
+            <PublicLeaderboardPage
+              testId={tests[0]?.id || 'test-code-1'}
+              onBackToApp={() => setCurrentView('arena')}
+            />
+          )
         )}
 
         {currentView === 'trainer' && currentUser?.role === 'trainer' && (
@@ -222,36 +256,58 @@ const MainLayout: React.FC = () => {
         )}
 
         {currentView === 'academy' && (
-          <AcademyDashboard
-            currentUser={currentUser}
-            onExit={() =>
-              setCurrentView(
-                currentUser
-                  ? currentUser.role === 'trainer'
-                    ? 'trainer'
-                    : currentUser.role === 'admin'
-                    ? 'admin'
-                    : 'student'
-                  : 'arena'
-              )
-            }
-          />
+          isModuleDisabled('academy') ? (
+            <ModuleUnderDevelopment
+              moduleName="Touch Typing Academy"
+              customMessage={moduleControls.academy?.statusMessage}
+              onBackToArena={() => setCurrentView('arena')}
+              onGoToDashboard={currentUser?.role === 'student' ? () => setCurrentView('student') : undefined}
+              isAdmin={currentUser?.role === 'admin'}
+              onAdminEnable={() => toggleModule('academy', false)}
+            />
+          ) : (
+            <AcademyDashboard
+              currentUser={currentUser}
+              onExit={() =>
+                setCurrentView(
+                  currentUser
+                    ? currentUser.role === 'trainer'
+                      ? 'trainer'
+                      : currentUser.role === 'admin'
+                      ? 'admin'
+                      : 'student'
+                    : 'arena'
+                )
+              }
+            />
+          )
         )}
 
         {currentView === 'multiplayer' && (
-          <MultiplayerArena
-            onExit={() =>
-              setCurrentView(
-                currentUser
-                  ? currentUser.role === 'trainer'
-                    ? 'trainer'
-                    : currentUser.role === 'admin'
-                    ? 'admin'
-                    : 'student'
-                  : 'arena'
-              )
-            }
-          />
+          isModuleDisabled('multiplayer') ? (
+            <ModuleUnderDevelopment
+              moduleName="Multiplayer Arena"
+              customMessage={moduleControls.multiplayer?.statusMessage}
+              onBackToArena={() => setCurrentView('arena')}
+              onGoToDashboard={currentUser?.role === 'student' ? () => setCurrentView('student') : undefined}
+              isAdmin={currentUser?.role === 'admin'}
+              onAdminEnable={() => toggleModule('multiplayer', false)}
+            />
+          ) : (
+            <MultiplayerArena
+              onExit={() =>
+                setCurrentView(
+                  currentUser
+                    ? currentUser.role === 'trainer'
+                      ? 'trainer'
+                      : currentUser.role === 'admin'
+                      ? 'admin'
+                      : 'student'
+                    : 'arena'
+                )
+              }
+            />
+          )
         )}
 
         {currentView === 'admin' && currentUser?.role === 'admin' && (

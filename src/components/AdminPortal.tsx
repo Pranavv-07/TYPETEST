@@ -38,7 +38,12 @@ import {
   Clock,
   ExternalLink,
   ShieldCheck,
-  AlertTriangle
+  AlertTriangle,
+  Sliders,
+  Power,
+  Swords,
+  Trophy,
+  Sparkles
 } from 'lucide-react';
 import { checkDatabaseConnection, DatabaseConnectionStatus } from '../services/supabaseService';
 
@@ -93,7 +98,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
     generateTestReport,
     updateCertificateStatus,
     deleteCertificate,
-    refreshData
+    refreshData,
+    addStudentsToClass,
+    moduleControls,
+    toggleModule,
+    isModuleDisabled
   } = useApp();
 
   type AdminTab =
@@ -109,7 +118,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
     | 'results'
     | 'certificates'
     | 'audit'
-    | 'import';
+    | 'import'
+    | 'modules';
 
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
 
@@ -162,8 +172,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
   const [newRollNo, setNewRollNo] = useState('');
   const [newStudentName, setNewStudentName] = useState('');
   const [newStudentBatch, setNewStudentBatch] = useState('2024-28');
-  const [newStudentClass, setNewStudentClass] = useState(classes[0]?.id || '');
+  const [newStudentClass, setNewStudentClass] = useState('');
   const [newStudentPassword, setNewStudentPassword] = useState('');
+
+  // Assign Students to Class Modal
+  const [assigningClass, setAssigningClass] = useState<ClassRoom | null>(null);
+  const [selectedStudentIdsToAssign, setSelectedStudentIdsToAssign] = useState<string[]>([]);
+  const [assignStudentSearch, setAssignStudentSearch] = useState('');
+  const [assignFilterUnassignedOnly, setAssignFilterUnassignedOnly] = useState(false);
+  const [isAssigningStudents, setIsAssigningStudents] = useState(false);
+  const [assignSuccessMsg, setAssignSuccessMsg] = useState('');
 
   // Edit student modal
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
@@ -207,12 +225,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
   const [bulkSuccessMsg, setBulkSuccessMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
-    if (classes.length > 0 && (!bulkClassId || !classes.find(c => c.id === bulkClassId))) {
-      setBulkClassId(classes[0].id);
-    }
-  }, [classes, bulkClassId]);
-
   // Parse Bulk Input
   const handleParsePaste = (text: string) => {
     setPasteData(text);
@@ -246,20 +258,20 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
     setBulkErrorMsg('');
     try {
       const selectedClass = classes.find(c => c.id === bulkClassId);
-      
-      if (!selectedClass) {
-        throw new Error('Please select a valid target classroom before importing.');
-      }
 
       const studentObjects = parsedPreview.map(p => ({
         rollNo: p.rollNo,
         name: p.name,
-        batchId: selectedClass.batchId,
-        classId: bulkClassId
+        batchId: selectedClass?.batchId || undefined,
+        classId: selectedClass ? selectedClass.id : undefined
       }));
 
       const count = await bulkAddStudents(studentObjects);
-      setBulkSuccessMsg(`Successfully imported ${count} students into ${selectedClass?.name || 'class roster'}.`);
+      setBulkSuccessMsg(
+        selectedClass
+          ? `Successfully imported ${count} students into ${selectedClass.name}.`
+          : `Successfully imported ${count} students (Unassigned / No Classroom).`
+      );
       setPasteData('');
       setParsedPreview([]);
       setTimeout(() => setBulkSuccessMsg(''), 5000);
@@ -278,20 +290,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
     setStudentModalError('');
     try {
       const selectedClass = classes.find(c => c.id === newStudentClass);
-      if (!selectedClass) {
-        throw new Error('Please select a valid classroom.');
-      }
 
       await addStudent({
         rollNo: newRollNo.trim().toUpperCase(),
         name: newStudentName.trim(),
-        batchId: selectedClass.batchId,
-        classId: selectedClass.id,
+        batchId: selectedClass?.batchId || undefined,
+        classId: selectedClass ? selectedClass.id : undefined,
         password: newStudentPassword.trim() || undefined
       });
 
       setNewRollNo('');
       setNewStudentName('');
+      setNewStudentClass('');
       setNewStudentPassword('');
       setShowAddStudentModal(false);
     } catch (err: any) {
@@ -309,8 +319,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
       rollNo: editStudentRollNo.trim().toUpperCase(),
       email: editStudentEmail.trim() || undefined,
       phone: editStudentPhone.trim() || undefined,
-      batchId: selectedClass?.batchId,
-      classId: selectedClass?.id,
+      batchId: selectedClass?.batchId || undefined,
+      classId: selectedClass ? selectedClass.id : '',
       status: editStudentStatus,
       password: editStudentPassword.trim() || undefined
     });
@@ -410,9 +420,24 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
     const matchesSearch =
       s.rollNo.toLowerCase().includes(studentSearch.toLowerCase()) ||
       s.name.toLowerCase().includes(studentSearch.toLowerCase());
-    const matchesClass = filterClass === 'all' || s.classId === filterClass;
+    const matchesClass =
+      filterClass === 'all'
+        ? true
+        : filterClass === 'unassigned'
+        ? !s.classId
+        : s.classId === filterClass;
     return matchesSearch && matchesClass;
   });
+
+  // Students eligible for assignment into a class
+  const availableStudentsForAssign = useMemo(() => {
+    return students.filter(s => {
+      const q = assignStudentSearch.trim().toLowerCase();
+      const matchesSearch = !q || s.rollNo.toLowerCase().includes(q) || s.name.toLowerCase().includes(q);
+      const matchesUnassigned = assignFilterUnassignedOnly ? !s.classId : true;
+      return matchesSearch && matchesUnassigned;
+    });
+  }, [students, assignStudentSearch, assignFilterUnassignedOnly]);
 
   // Filter violations
   const filteredViolations = violations.filter(v => {
@@ -506,7 +531,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
           { id: 'results', label: 'Results & Reports', icon: Award },
           { id: 'certificates', label: `Certificates (${certificates.length})`, icon: ShieldCheck },
           { id: 'audit', label: `Audit Logs (${auditLogs.length})`, icon: History },
-          { id: 'import', label: 'Bulk Ingest', icon: FileSpreadsheet }
+          { id: 'import', label: 'Bulk Ingest', icon: FileSpreadsheet },
+          { id: 'modules', label: 'Feature Controls', icon: Sliders }
         ].map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -836,6 +862,20 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
                     <span className="text-slate-400 font-mono font-bold">{classStudents.length} Students</span>
                     <span className="text-cyan-400 font-mono text-[11px]">{assignedTrainer?.name || 'Assigned Trainer'}</span>
                   </div>
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAssigningClass(cls);
+                        setSelectedStudentIdsToAssign([]);
+                        setAssignSuccessMsg('');
+                      }}
+                      className="w-full py-2 px-3 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                      <span>Add / Assign Students</span>
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -864,6 +904,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
                 className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
               >
                 <option value="all">All Classes</option>
+                <option value="unassigned">Unassigned (No Class)</option>
                 {classes.map(c => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
@@ -923,7 +964,34 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
                     <tr key={s.id} className="hover:bg-slate-800/40 transition-colors">
                       <td className="p-3 font-mono font-bold text-cyan-400">{s.rollNo}</td>
                       <td className="p-3 font-semibold">{s.name}</td>
-                      <td className="p-3 text-slate-400">{studentClass?.name || 'Unassigned'}</td>
+                      <td className="p-3">
+                        {studentClass ? (
+                          <span className="text-slate-200 font-medium">{studentClass.name}</span>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30 text-[10px] font-mono font-bold">
+                              Unassigned
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingStudent(s);
+                                setEditStudentName(s.name);
+                                setEditStudentRollNo(s.rollNo);
+                                setEditStudentEmail(s.email || '');
+                                setEditStudentPhone(s.phone || '');
+                                setEditStudentBatch(s.batch || '2024-28');
+                                setEditStudentClass('');
+                                setEditStudentStatus(s.status || 'active');
+                                setEditStudentPassword(s.password || '');
+                              }}
+                              className="text-[10px] font-mono text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
+                            >
+                              + Assign Class
+                            </button>
+                          </div>
+                        )}
+                      </td>
                       <td className="p-3 text-slate-400 font-mono">{s.batch || '2024-28'}</td>
                       <td className="p-3 text-right space-x-2">
                         <button
@@ -934,11 +1002,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
                             setEditStudentEmail(s.email || '');
                             setEditStudentPhone(s.phone || '');
                             setEditStudentBatch(s.batch || '2024-28');
-                            setEditStudentClass(s.classId || classes[0]?.id || '');
+                            setEditStudentClass(s.classId || '');
                             setEditStudentStatus(s.status || 'active');
                             setEditStudentPassword(s.password || '');
                           }}
-                          className="p-1 hover:text-cyan-400 transition-colors"
+                          className="p-1 hover:text-cyan-400 transition-colors cursor-pointer"
                           title="Edit Student"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
@@ -1420,6 +1488,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
                   onChange={e => setBulkClassId(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
                 >
+                  <option value="">-- No Classroom (Leave Blank / Unassigned) --</option>
                   {classes.map(c => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
@@ -1464,6 +1533,160 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
                   <span>{isSubmitting ? 'Importing...' : `Import ${parsedPreview.length} Students to Database`}</span>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 13: FEATURE CONTROLS / STOP MODULES */}
+      {activeTab === 'modules' && (
+        <div className="space-y-6">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 space-y-4 shadow-xl">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 text-[10px] font-mono font-bold uppercase tracking-wider">
+                    Administrative Gates
+                  </span>
+                </div>
+                <h3 className="text-xl font-bold text-slate-100 flex items-center gap-2.5 mt-2">
+                  <Sliders className="w-5 h-5 text-cyan-400" />
+                  <span>Platform Feature Controls & Module Gates</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
+                  Instantly stop or enable specific modules across the platform. When a module is stopped, students or visitors accessing it will see a friendly <strong>"Module Under Development"</strong> notification and will be directed back to their active practice or assessments.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-2xl text-xs font-mono text-slate-300 shrink-0">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span>Enforcement: Real-time</span>
+              </div>
+            </div>
+
+            {/* Modules Grid */}
+            <div className="grid md:grid-cols-2 gap-4 pt-2">
+              {[
+                {
+                  key: 'multiplayer' as const,
+                  name: 'Multiplayer Arena',
+                  desc: 'Real-time competitive typing battles, live lobby matchmaking, and race tracks.',
+                  icon: Swords,
+                  badge: 'Competitions'
+                },
+                {
+                  key: 'academy' as const,
+                  name: 'Touch Typing Academy',
+                  desc: 'Structured 5-module curriculum with diagnostic placement tests and lesson drills.',
+                  icon: GraduationCap,
+                  badge: 'Curriculum'
+                },
+                {
+                  key: 'leaderboard' as const,
+                  name: 'Public Leaderboard',
+                  desc: 'Global typing speed hall of fame, percentiles, and institutional rankings.',
+                  icon: Trophy,
+                  badge: 'Rankings'
+                },
+                {
+                  key: 'tests' as const,
+                  name: 'Explore Tests Directory',
+                  desc: 'Public catalog of prose, standard speed paragraphs, and code exercises.',
+                  icon: Sparkles,
+                  badge: 'Catalog'
+                },
+                {
+                  key: 'verify' as const,
+                  name: 'Public Certificate Verification',
+                  desc: 'Public verification portal for validating student certificate tokens.',
+                  icon: ShieldCheck,
+                  badge: 'Credentialing'
+                }
+              ].map(mod => {
+                const Icon = mod.icon;
+                const config = moduleControls[mod.key];
+                const isDisabled = isModuleDisabled(mod.key);
+
+                return (
+                  <div
+                    key={mod.key}
+                    className={`p-5 rounded-2xl border transition-all ${
+                      isDisabled
+                        ? 'bg-amber-950/20 border-amber-500/40 shadow-sm'
+                        : 'bg-slate-950/60 border-slate-800/80 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                            isDisabled
+                              ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                              : 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/30'
+                          }`}
+                        >
+                          <Icon className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-sm font-bold text-slate-100">{mod.name}</h4>
+                            <span className="text-[10px] font-mono text-slate-400 px-1.5 py-0.2 rounded bg-slate-900 border border-slate-800">
+                              {mod.badge}
+                            </span>
+                          </div>
+                          <span
+                            className={`text-[10px] font-mono font-bold uppercase tracking-wider inline-flex items-center gap-1.5 mt-0.5 ${
+                              isDisabled ? 'text-amber-400' : 'text-emerald-400'
+                            }`}
+                          >
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                isDisabled ? 'bg-amber-400' : 'bg-emerald-400'
+                              }`}
+                            />
+                            {isDisabled ? 'Stopped (Module Under Development)' : 'Active & Accessible'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Action Toggle Button */}
+                      <button
+                        type="button"
+                        onClick={() => toggleModule(mod.key, !isDisabled)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold font-mono transition-all flex items-center gap-1.5 cursor-pointer shadow-sm ${
+                          isDisabled
+                            ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/20'
+                            : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40'
+                        }`}
+                      >
+                        <Power className="w-3.5 h-3.5" />
+                        <span>{isDisabled ? 'Re-enable Module' : 'Stop / Mark Under Dev'}</span>
+                      </button>
+                    </div>
+
+                    <p className="text-xs text-slate-400 mb-3">{mod.desc}</p>
+
+                    {/* Announcement Message Preview & Edit */}
+                    <div className="space-y-1.5 pt-2 border-t border-slate-800/80">
+                      <label className="text-[11px] font-mono text-slate-400 flex items-center justify-between">
+                        <span>Notice Shown to Students when Stopped:</span>
+                        <span className="text-[10px] text-slate-500">Live Customization</span>
+                      </label>
+                      <input
+                        type="text"
+                        defaultValue={config?.statusMessage || 'This module is currently under development. Please focus on your practice and assessments.'}
+                        onBlur={e => {
+                          const val = e.target.value.trim();
+                          if (val && val !== config?.statusMessage) {
+                            toggleModule(mod.key, isDisabled, val);
+                          }
+                        }}
+                        placeholder="e.g. This module is currently under development."
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -1681,6 +1904,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
                   onChange={e => setNewStudentClass(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 mt-1"
                 >
+                  <option value="">-- No Classroom (Leave Blank / Unassigned) --</option>
                   {classes.map(c => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
@@ -1778,6 +2002,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
                     onChange={e => setEditStudentClass(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 mt-1"
                   >
+                    <option value="">-- No Classroom (Leave Blank / Unassigned) --</option>
                     {classes.map(c => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
@@ -2072,6 +2297,183 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
               >
                 Confirm Reset & Log Audit
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ASSIGN STUDENTS TO CLASS MODAL */}
+      {assigningClass && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-2xl w-full p-6 space-y-4 max-h-[90vh] flex flex-col shadow-2xl">
+            <div className="flex justify-between items-start border-b border-slate-800 pb-3">
+              <div>
+                <span className="text-[10px] font-mono text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800 uppercase font-bold">
+                  {assigningClass.code || 'Classroom'}
+                </span>
+                <h3 className="font-bold text-slate-100 text-base mt-1">
+                  Assign Students to <span className="text-cyan-400">{assigningClass.name}</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Select students to enroll into this classroom roster. Currently enrolled: {students.filter(s => s.classId === assigningClass.id).length} students.
+                </p>
+              </div>
+              <button
+                onClick={() => { setAssigningClass(null); setSelectedStudentIdsToAssign([]); setAssignSuccessMsg(''); }}
+                className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {assignSuccessMsg && (
+              <div className="p-3 bg-emerald-500/15 border border-emerald-500/30 rounded-xl text-xs text-emerald-300 font-semibold flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <span>{assignSuccessMsg}</span>
+              </div>
+            )}
+
+            {/* Filter and Search Bar */}
+            <div className="flex flex-col sm:flex-row gap-2 justify-between items-stretch sm:items-center">
+              <div className="relative flex-1">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-500" />
+                <input
+                  type="text"
+                  placeholder="Search student roll number or name..."
+                  value={assignStudentSearch}
+                  onChange={e => setAssignStudentSearch(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-1.5 text-xs text-slate-300 font-mono cursor-pointer select-none px-2 py-1 bg-slate-950 rounded-xl border border-slate-800">
+                  <input
+                    type="checkbox"
+                    checked={assignFilterUnassignedOnly}
+                    onChange={e => setAssignFilterUnassignedOnly(e.target.checked)}
+                    className="rounded accent-cyan-500 cursor-pointer"
+                  />
+                  <span>Unassigned only</span>
+                </label>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const eligibleIds = availableStudentsForAssign.map(s => s.id);
+                    if (selectedStudentIdsToAssign.length === eligibleIds.length) {
+                      setSelectedStudentIdsToAssign([]);
+                    } else {
+                      setSelectedStudentIdsToAssign(eligibleIds);
+                    }
+                  }}
+                  className="px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700 transition-colors font-mono cursor-pointer"
+                >
+                  {selectedStudentIdsToAssign.length === availableStudentsForAssign.length && availableStudentsForAssign.length > 0
+                    ? 'Deselect All'
+                    : 'Select All'}
+                </button>
+              </div>
+            </div>
+
+            {/* Student List */}
+            <div className="flex-1 overflow-y-auto border border-slate-800 rounded-2xl bg-slate-950/60 divide-y divide-slate-800/60 max-h-72">
+              {availableStudentsForAssign.length === 0 ? (
+                <div className="p-8 text-center text-xs text-slate-500 font-mono">
+                  No matching students found.
+                </div>
+              ) : (
+                availableStudentsForAssign.map(s => {
+                  const isSelected = selectedStudentIdsToAssign.includes(s.id);
+                  const isCurrentClass = s.classId === assigningClass.id;
+                  const currentClassName = classes.find(c => c.id === s.classId)?.name;
+
+                  return (
+                    <label
+                      key={s.id}
+                      className={`p-3 flex items-center justify-between hover:bg-slate-800/40 cursor-pointer transition-colors ${
+                        isSelected ? 'bg-cyan-500/10' : ''
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={e => {
+                            if (e.target.checked) {
+                              setSelectedStudentIdsToAssign(prev => [...prev, s.id]);
+                            } else {
+                              setSelectedStudentIdsToAssign(prev => prev.filter(id => id !== s.id));
+                            }
+                          }}
+                          className="w-4 h-4 rounded accent-cyan-500 cursor-pointer"
+                        />
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-xs text-cyan-400">{s.rollNo}</span>
+                            <span className="text-xs font-semibold text-slate-200">{s.name}</span>
+                          </div>
+                          <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                            {isCurrentClass ? (
+                              <span className="text-emerald-400 font-semibold">Already in this class</span>
+                            ) : s.classId ? (
+                              <span className="text-slate-400">Current: {currentClassName || 'Another class'}</span>
+                            ) : (
+                              <span className="text-amber-400 font-bold">Unassigned (No Class)</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right text-[11px] font-mono text-slate-500">
+                        {s.batch || '2024-28'}
+                      </div>
+                    </label>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Footer / Submit */}
+            <div className="flex items-center justify-between pt-3 border-t border-slate-800">
+              <span className="text-xs font-mono text-slate-400">
+                Selected: <strong className="text-cyan-400">{selectedStudentIdsToAssign.length}</strong> students
+              </span>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setAssigningClass(null); setSelectedStudentIdsToAssign([]); }}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={selectedStudentIdsToAssign.length === 0 || isAssigningStudents}
+                  onClick={async () => {
+                    if (!assigningClass || selectedStudentIdsToAssign.length === 0) return;
+                    setIsAssigningStudents(true);
+                    try {
+                      await addStudentsToClass(assigningClass.id, selectedStudentIdsToAssign);
+                      setAssignSuccessMsg(`Successfully assigned ${selectedStudentIdsToAssign.length} students to ${assigningClass.name}!`);
+                      setTimeout(() => {
+                        setAssigningClass(null);
+                        setSelectedStudentIdsToAssign([]);
+                        setAssignSuccessMsg('');
+                      }, 1200);
+                    } catch (err: any) {
+                      alert(`Failed to assign students: ${err.message || 'Database error'}`);
+                    } finally {
+                      setIsAssigningStudents(false);
+                    }
+                  }}
+                  className="px-5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-lg shadow-cyan-500/20 cursor-pointer"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>{isAssigningStudents ? 'Assigning...' : `Assign ${selectedStudentIdsToAssign.length} Students`}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
