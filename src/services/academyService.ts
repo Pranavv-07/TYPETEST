@@ -96,11 +96,32 @@ function createFullyCompletedProfile(studentId: string): StudentAcademyProfile {
 
   const now = new Date();
   const pastDates: string[] = [];
+  const seedAttempts: StudentLessonAttempt[] = [];
   for (let i = 0; i < 15; i++) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    pastDates.push(d.toISOString());
+    const d = new Date(now.getTime() - i * 86400000);
+    const dayStr = normalizeDateToCalendarDay(d);
+    pastDates.push(dayStr);
+
+    seedAttempts.push({
+      id: `att-pranav-seed-${i}`,
+      lessonId: curriculum.levels[Math.min(6, Math.floor(i / 2))].lessons[0].id,
+      phase: i % 2 === 0 ? 'practice' : 'assessment',
+      wpm: 80 + (i % 8),
+      accuracy: 98 + (i % 2),
+      timeTakenSeconds: 60,
+      weakKeysDetected: [],
+      timestamp: d.toISOString()
+    });
   }
+
+  // Pre-seed attempts into localStorage for Pranav
+  const attemptsKey = `${ATTEMPTS_KEY_PREFIX}${normalizeStudentIdKey(studentId)}`;
+  try {
+    const existing = localStorage.getItem(attemptsKey);
+    if (!existing) {
+      localStorage.setItem(attemptsKey, JSON.stringify(seedAttempts));
+    }
+  } catch {}
 
   const profile: StudentAcademyProfile = {
     studentId,
@@ -117,7 +138,8 @@ function createFullyCompletedProfile(studentId: string): StudentAcademyProfile {
     streakDays: 15,
     longestStreakDays: 15,
     practicedToday: true,
-    activityDates: pastDates.map(d => d.substring(0, 10)),
+    activityDates: pastDates,
+    lastActiveDate: pastDates[0],
     certificateEarned: true,
     certificateId: 'cert-pranav-24b11cs355-apex',
     trainerOverrideUnlockAll: true
@@ -138,13 +160,55 @@ function isPranavVedulaAccount(id: string): boolean {
   );
 }
 
+// Normalize student ID for consistent localStorage keys
+export function normalizeStudentIdKey(id: string): string {
+  if (!id) return 'guest';
+  if (isPranavVedulaAccount(id)) return 'std-24b11cs355';
+  return id.trim();
+}
+
+// Normalize date string, Date object, or timestamp to YYYY-MM-DD calendar day without timezone shift
+export function normalizeDateToCalendarDay(d: string | Date | null | undefined): string {
+  if (!d) return '';
+  if (typeof d === 'string') {
+    const trimmed = d.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      return trimmed;
+    }
+    const match = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
+    try {
+      const dateObj = new Date(trimmed);
+      if (isNaN(dateObj.getTime())) {
+        return match ? match[1] : '';
+      }
+      const year = dateObj.getFullYear();
+      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const day = String(dateObj.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    } catch {
+      return match ? match[1] : '';
+    }
+  } else if (d instanceof Date) {
+    if (isNaN(d.getTime())) return '';
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  return '';
+}
+
 // Get or create Student Academy Profile
 export function getStudentAcademyProfile(studentId: string): StudentAcademyProfile {
   const isPranav = isPranavVedulaAccount(studentId);
-  const key = `${PROFILE_KEY_PREFIX}${studentId}`;
+  const normalizedId = normalizeStudentIdKey(studentId);
+  const key = `${PROFILE_KEY_PREFIX}${normalizedId}`;
 
   try {
-    const stored = localStorage.getItem(key);
+    let stored = localStorage.getItem(key);
+    if (!stored && normalizedId !== studentId) {
+      stored = localStorage.getItem(`${PROFILE_KEY_PREFIX}${studentId}`);
+    }
     if (stored) {
       const profile: StudentAcademyProfile = JSON.parse(stored);
       if (isPranav && profile.currentLevelId < 7) {
@@ -175,7 +239,7 @@ export function getStudentAcademyProfile(studentId: string): StudentAcademyProfi
     lessonProgress: {},
     weakKeysCounter: {},
     totalPracticeSeconds: 0,
-    streakDays: 1,
+    streakDays: 0,
     trainerOverrideUnlockAll: false,
   };
 
@@ -184,16 +248,20 @@ export function getStudentAcademyProfile(studentId: string): StudentAcademyProfi
 
 // Save Student Academy Profile
 export function saveStudentAcademyProfile(profile: StudentAcademyProfile): void {
-  const key = `${PROFILE_KEY_PREFIX}${profile.studentId}`;
+  const normId = normalizeStudentIdKey(profile.studentId);
+  const key = `${PROFILE_KEY_PREFIX}${normId}`;
   try {
     localStorage.setItem(key, JSON.stringify(profile));
+    if (normId !== profile.studentId) {
+      localStorage.setItem(`${PROFILE_KEY_PREFIX}${profile.studentId}`, JSON.stringify(profile));
+    }
   } catch (e) {
     console.error('Failed to save student profile:', e);
   }
 }
 
-// Calculate streak from date strings
-export function calculateStreakFromDates(dateStrings: string[]): {
+// Calculate streak from date strings with robust calendar arithmetic and timezone preservation
+export function calculateStreakFromDates(dateStrings: (string | Date)[]): {
   currentStreak: number;
   longestStreak: number;
   practicedToday: boolean;
@@ -203,71 +271,66 @@ export function calculateStreakFromDates(dateStrings: string[]): {
     return { currentStreak: 0, longestStreak: 0, practicedToday: false, activityDates: [] };
   }
 
-  const uniqueDays = Array.from(
-    new Set(
-      dateStrings.map(d => {
-        try {
-          const dateObj = new Date(d);
-          if (isNaN(dateObj.getTime())) return '';
-          const year = dateObj.getFullYear();
-          const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-          const day = String(dateObj.getDate()).padStart(2, '0');
-          return `${year}-${month}-${day}`;
-        } catch {
-          return '';
-        }
-      }).filter(Boolean)
-    )
-  ).sort().reverse();
+  const daySet = new Set<string>();
+  dateStrings.forEach(d => {
+    const s = normalizeDateToCalendarDay(d);
+    if (s) daySet.add(s);
+  });
 
+  const uniqueDays = Array.from(daySet).sort().reverse();
   if (uniqueDays.length === 0) {
     return { currentStreak: 0, longestStreak: 0, practicedToday: false, activityDates: [] };
   }
 
   const now = new Date();
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  
-  const yesterdayObj = new Date(now);
-  yesterdayObj.setDate(yesterdayObj.getDate() - 1);
-  const yesterdayStr = `${yesterdayObj.getFullYear()}-${String(yesterdayObj.getMonth() + 1).padStart(2, '0')}-${String(yesterdayObj.getDate()).padStart(2, '0')}`;
+  const todayStr = normalizeDateToCalendarDay(now);
+  const nowYear = now.getFullYear();
+  const nowMonth = now.getMonth();
+  const nowDate = now.getDate();
+  const todayMs = Date.UTC(nowYear, nowMonth, nowDate);
+  const ONE_DAY_MS = 86400000;
 
   const practicedToday = uniqueDays.includes(todayStr);
+  const mostRecentDay = uniqueDays[0];
+  const [mYear, mMonth, mDay] = mostRecentDay.split('-').map(Number);
+  const mostRecentMs = Date.UTC(mYear, mMonth - 1, mDay);
 
   let currentStreak = 0;
-  if (uniqueDays[0] === todayStr || uniqueDays[0] === yesterdayStr) {
-    let checkDate = new Date(uniqueDays[0] === todayStr ? now : yesterdayObj);
-    for (const day of uniqueDays) {
-      const year = checkDate.getFullYear();
-      const month = String(checkDate.getMonth() + 1).padStart(2, '0');
-      const d = String(checkDate.getDate()).padStart(2, '0');
-      const expectedDayStr = `${year}-${month}-${d}`;
-      if (day === expectedDayStr) {
+  // If the user practiced today, start consecutive check from today.
+  // If the user practiced yesterday (but not today yet), their streak is still alive! Start from yesterday.
+  if (mostRecentMs === todayMs || mostRecentMs === todayMs - ONE_DAY_MS) {
+    let expectedMs = mostRecentMs;
+    for (const dayStr of uniqueDays) {
+      const [y, m, d] = dayStr.split('-').map(Number);
+      const curMs = Date.UTC(y, m - 1, d);
+      if (curMs === expectedMs) {
         currentStreak++;
-        checkDate.setDate(checkDate.getDate() - 1);
+        expectedMs -= ONE_DAY_MS;
       } else {
         break;
       }
     }
   }
 
-  let longestStreak = currentStreak;
+  // Longest streak across all recorded activity
   const ascDays = [...uniqueDays].reverse();
+  let longestStreak = currentStreak;
   let tempStreak = 0;
-  let prevDate: Date | null = null;
-  for (const day of ascDays) {
-    const curDate = new Date(`${day}T00:00:00`);
-    if (!prevDate) {
+  let prevMs: number | null = null;
+  for (const dayStr of ascDays) {
+    const [y, m, d] = dayStr.split('-').map(Number);
+    const curMs = Date.UTC(y, m - 1, d);
+    if (prevMs === null) {
       tempStreak = 1;
     } else {
-      const diffTime = curDate.getTime() - prevDate.getTime();
-      const diffDays = Math.round(diffTime / (1000 * 3600 * 24));
+      const diffDays = Math.round((curMs - prevMs) / ONE_DAY_MS);
       if (diffDays === 1) {
         tempStreak++;
       } else if (diffDays > 1) {
         tempStreak = 1;
       }
     }
-    prevDate = curDate;
+    prevMs = curMs;
     if (tempStreak > longestStreak) {
       longestStreak = tempStreak;
     }

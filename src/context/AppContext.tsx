@@ -283,23 +283,52 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => {
     if (!isDatabaseConnected) return;
 
-    const channel = supabase
-      .channel('public:institutional_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'attempts' }, () => {
-        fetchSubmissions().then(setSubmissions);
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'violations' }, () => {
-        fetchViolations().then(setViolations);
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tests' }, () => {
-        fetchTests().then(setTests);
-      })
-      .subscribe();
+    let subTimeout: any = null;
+    let violTimeout: any = null;
+    let testTimeout: any = null;
+
+    const debouncedFetchSubmissions = () => {
+      clearTimeout(subTimeout);
+      subTimeout = setTimeout(() => {
+        fetchSubmissions().then(setSubmissions).catch(console.error);
+      }, 1200);
+    };
+
+    const debouncedFetchViolations = () => {
+      clearTimeout(violTimeout);
+      violTimeout = setTimeout(() => {
+        fetchViolations().then(setViolations).catch(console.error);
+      }, 1200);
+    };
+
+    const debouncedFetchTests = () => {
+      clearTimeout(testTimeout);
+      testTimeout = setTimeout(() => {
+        fetchTests().then(setTests).catch(console.error);
+      }, 800);
+    };
+
+    const isStaff = currentUser?.role === 'admin' || currentUser?.role === 'trainer';
+    const channelName = `public:changes_${isStaff ? 'staff_' + (currentUser?.id || 'admin') : 'student'}`;
+    const channel = supabase.channel(channelName);
+
+    if (isStaff) {
+      channel
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'attempts' }, debouncedFetchSubmissions)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'violations' }, debouncedFetchViolations);
+    }
+
+    channel.on('postgres_changes', { event: '*', schema: 'public', table: 'tests' }, debouncedFetchTests);
+
+    channel.subscribe();
 
     return () => {
+      clearTimeout(subTimeout);
+      clearTimeout(violTimeout);
+      clearTimeout(testTimeout);
       supabase.removeChannel(channel);
     };
-  }, [isDatabaseConnected]);
+  }, [isDatabaseConnected, currentUser?.role, currentUser?.id]);
 
   // ==========================================================================
   // AUTHENTICATION
@@ -600,10 +629,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (res.certificate) {
       setCertificates(prev => [res.certificate!, ...prev.filter(c => c.id !== res.certificate!.id)]);
     }
-    // Synchronize global dashboard stores
-    setTimeout(() => {
-      refreshData().catch(console.error);
-    }, 150);
+    // Synchronize global dashboard stores only for staff (students already have state updated locally)
+    if (currentUser?.role === 'admin' || currentUser?.role === 'trainer') {
+      setTimeout(() => {
+        refreshData().catch(console.error);
+      }, 500);
+    }
     return res;
   };
 
