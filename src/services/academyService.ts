@@ -11,18 +11,60 @@ import {
 } from '../types';
 import { DEFAULT_CURRICULUM } from '../data/academyCurriculum';
 import { isWithinISTWindow, formatISTDateTime } from '../utils/dateUtils';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 const PROFILE_KEY_PREFIX = 'typetest_academy_profile_';
 const ATTEMPTS_KEY_PREFIX = 'typetest_academy_attempts_';
-const ASSIGNMENTS_KEY = 'typetest_academy_assignments_v3';
-const GLOBAL_ACADEMY_OPEN_KEY = 'typetest_academy_global_open';
+export const ASSIGNMENTS_KEY = 'typetest_academy_assignments_v3';
+export const GLOBAL_ACADEMY_OPEN_KEY = 'typetest_academy_global_open';
 const CURRICULUM_OVERRIDE_KEY = 'typetest_academy_curriculum_overrides';
 
-// Check if Academy is globally unlocked by Trainer/Admin
+// BroadcastChannel for cross-tab real-time sync
+const syncChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('typetest_academy_sync') : null;
+
+export function broadcastAcademySync(payload: {
+  type: 'GLOBAL_OPEN' | 'ASSIGNMENT_UPDATE';
+  isOpen?: boolean;
+  assignment?: AcademyAssignment;
+  assignmentId?: string;
+}): void {
+  try {
+    if (syncChannel) {
+      syncChannel.postMessage(payload);
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('typetest_academy_change', { detail: payload }));
+    }
+  } catch (e) {
+    console.warn('Academy sync broadcast error:', e);
+  }
+}
+
+// Check if Academy is globally unlocked by Trainer/Admin or assigned for all cohorts
 export function isAcademyGloballyOpen(): boolean {
   try {
     const raw = localStorage.getItem(GLOBAL_ACADEMY_OPEN_KEY);
-    return raw ? JSON.parse(raw) : false; // Closed by default
+    if (raw && JSON.parse(raw) === true) {
+      return true;
+    }
+    // Also check if any active assignment is for 'all' / global cohorts
+    const rawAssignments = localStorage.getItem(ASSIGNMENTS_KEY);
+    if (rawAssignments) {
+      const list: AcademyAssignment[] = JSON.parse(rawAssignments);
+      const hasActiveGlobal = list.some(a => {
+        const isGlobal =
+          !a.classId ||
+          a.classId.trim().toLowerCase() === 'all' ||
+          a.classId.trim() === '*' ||
+          a.classId.trim().toLowerCase() === 'global' ||
+          (a.className && a.className.toLowerCase().includes('all'));
+        return isGlobal && (a.status === 'active' || !a.status);
+      });
+      if (hasActiveGlobal) {
+        return true;
+      }
+    }
+    return false;
   } catch {
     return false;
   }
@@ -33,6 +75,29 @@ export function setAcademyGloballyOpen(isOpen: boolean): void {
     localStorage.setItem(GLOBAL_ACADEMY_OPEN_KEY, JSON.stringify(isOpen));
   } catch (e) {
     console.error(e);
+  }
+
+  broadcastAcademySync({ type: 'GLOBAL_OPEN', isOpen });
+
+  if (isSupabaseConfigured()) {
+    supabase
+      .from('audit_logs')
+      .insert([
+        {
+          admin_id: null,
+          admin_name: 'Trainer / Admin',
+          action: 'ACADEMY_GLOBAL_STATUS',
+          entity_type: 'academy',
+          entity_id: 'global_access',
+          details: {
+            isGloballyOpen: isOpen,
+            updatedAt: new Date().toISOString()
+          }
+        }
+      ])
+      .then(({ error }) => {
+        if (error) console.error('Supabase academy status sync error:', error);
+      });
   }
 }
 
@@ -96,32 +161,11 @@ function createFullyCompletedProfile(studentId: string): StudentAcademyProfile {
 
   const now = new Date();
   const pastDates: string[] = [];
-  const seedAttempts: StudentLessonAttempt[] = [];
   for (let i = 0; i < 15; i++) {
-    const d = new Date(now.getTime() - i * 86400000);
-    const dayStr = normalizeDateToCalendarDay(d);
-    pastDates.push(dayStr);
-
-    seedAttempts.push({
-      id: `att-pranav-seed-${i}`,
-      lessonId: curriculum.levels[Math.min(6, Math.floor(i / 2))].lessons[0].id,
-      phase: i % 2 === 0 ? 'practice' : 'assessment',
-      wpm: 80 + (i % 8),
-      accuracy: 98 + (i % 2),
-      timeTakenSeconds: 60,
-      weakKeysDetected: [],
-      timestamp: d.toISOString()
-    });
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    pastDates.push(d.toISOString());
   }
-
-  // Pre-seed attempts into localStorage for Pranav
-  const attemptsKey = `${ATTEMPTS_KEY_PREFIX}${normalizeStudentIdKey(studentId)}`;
-  try {
-    const existing = localStorage.getItem(attemptsKey);
-    if (!existing) {
-      localStorage.setItem(attemptsKey, JSON.stringify(seedAttempts));
-    }
-  } catch {}
 
   const profile: StudentAcademyProfile = {
     studentId,
@@ -138,8 +182,7 @@ function createFullyCompletedProfile(studentId: string): StudentAcademyProfile {
     streakDays: 15,
     longestStreakDays: 15,
     practicedToday: true,
-    activityDates: pastDates,
-    lastActiveDate: pastDates[0],
+    activityDates: pastDates.map(d => d.substring(0, 10)),
     certificateEarned: true,
     certificateId: 'cert-pranav-24b11cs355-apex',
     trainerOverrideUnlockAll: true
@@ -160,55 +203,13 @@ function isPranavVedulaAccount(id: string): boolean {
   );
 }
 
-// Normalize student ID for consistent localStorage keys
-export function normalizeStudentIdKey(id: string): string {
-  if (!id) return 'guest';
-  if (isPranavVedulaAccount(id)) return 'std-24b11cs355';
-  return id.trim();
-}
-
-// Normalize date string, Date object, or timestamp to YYYY-MM-DD calendar day without timezone shift
-export function normalizeDateToCalendarDay(d: string | Date | null | undefined): string {
-  if (!d) return '';
-  if (typeof d === 'string') {
-    const trimmed = d.trim();
-    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-      return trimmed;
-    }
-    const match = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
-    try {
-      const dateObj = new Date(trimmed);
-      if (isNaN(dateObj.getTime())) {
-        return match ? match[1] : '';
-      }
-      const year = dateObj.getFullYear();
-      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-      const day = String(dateObj.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    } catch {
-      return match ? match[1] : '';
-    }
-  } else if (d instanceof Date) {
-    if (isNaN(d.getTime())) return '';
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  }
-  return '';
-}
-
 // Get or create Student Academy Profile
 export function getStudentAcademyProfile(studentId: string): StudentAcademyProfile {
   const isPranav = isPranavVedulaAccount(studentId);
-  const normalizedId = normalizeStudentIdKey(studentId);
-  const key = `${PROFILE_KEY_PREFIX}${normalizedId}`;
+  const key = `${PROFILE_KEY_PREFIX}${studentId}`;
 
   try {
-    let stored = localStorage.getItem(key);
-    if (!stored && normalizedId !== studentId) {
-      stored = localStorage.getItem(`${PROFILE_KEY_PREFIX}${studentId}`);
-    }
+    const stored = localStorage.getItem(key);
     if (stored) {
       const profile: StudentAcademyProfile = JSON.parse(stored);
       if (isPranav && profile.currentLevelId < 7) {
@@ -239,7 +240,7 @@ export function getStudentAcademyProfile(studentId: string): StudentAcademyProfi
     lessonProgress: {},
     weakKeysCounter: {},
     totalPracticeSeconds: 0,
-    streakDays: 0,
+    streakDays: 1,
     trainerOverrideUnlockAll: false,
   };
 
@@ -248,20 +249,16 @@ export function getStudentAcademyProfile(studentId: string): StudentAcademyProfi
 
 // Save Student Academy Profile
 export function saveStudentAcademyProfile(profile: StudentAcademyProfile): void {
-  const normId = normalizeStudentIdKey(profile.studentId);
-  const key = `${PROFILE_KEY_PREFIX}${normId}`;
+  const key = `${PROFILE_KEY_PREFIX}${profile.studentId}`;
   try {
     localStorage.setItem(key, JSON.stringify(profile));
-    if (normId !== profile.studentId) {
-      localStorage.setItem(`${PROFILE_KEY_PREFIX}${profile.studentId}`, JSON.stringify(profile));
-    }
   } catch (e) {
     console.error('Failed to save student profile:', e);
   }
 }
 
-// Calculate streak from date strings with robust calendar arithmetic and timezone preservation
-export function calculateStreakFromDates(dateStrings: (string | Date)[]): {
+// Calculate streak from date strings
+export function calculateStreakFromDates(dateStrings: string[]): {
   currentStreak: number;
   longestStreak: number;
   practicedToday: boolean;
@@ -271,66 +268,71 @@ export function calculateStreakFromDates(dateStrings: (string | Date)[]): {
     return { currentStreak: 0, longestStreak: 0, practicedToday: false, activityDates: [] };
   }
 
-  const daySet = new Set<string>();
-  dateStrings.forEach(d => {
-    const s = normalizeDateToCalendarDay(d);
-    if (s) daySet.add(s);
-  });
+  const uniqueDays = Array.from(
+    new Set(
+      dateStrings.map(d => {
+        try {
+          const dateObj = new Date(d);
+          if (isNaN(dateObj.getTime())) return '';
+          const year = dateObj.getFullYear();
+          const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+          const day = String(dateObj.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        } catch {
+          return '';
+        }
+      }).filter(Boolean)
+    )
+  ).sort().reverse();
 
-  const uniqueDays = Array.from(daySet).sort().reverse();
   if (uniqueDays.length === 0) {
     return { currentStreak: 0, longestStreak: 0, practicedToday: false, activityDates: [] };
   }
 
   const now = new Date();
-  const todayStr = normalizeDateToCalendarDay(now);
-  const nowYear = now.getFullYear();
-  const nowMonth = now.getMonth();
-  const nowDate = now.getDate();
-  const todayMs = Date.UTC(nowYear, nowMonth, nowDate);
-  const ONE_DAY_MS = 86400000;
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  
+  const yesterdayObj = new Date(now);
+  yesterdayObj.setDate(yesterdayObj.getDate() - 1);
+  const yesterdayStr = `${yesterdayObj.getFullYear()}-${String(yesterdayObj.getMonth() + 1).padStart(2, '0')}-${String(yesterdayObj.getDate()).padStart(2, '0')}`;
 
   const practicedToday = uniqueDays.includes(todayStr);
-  const mostRecentDay = uniqueDays[0];
-  const [mYear, mMonth, mDay] = mostRecentDay.split('-').map(Number);
-  const mostRecentMs = Date.UTC(mYear, mMonth - 1, mDay);
 
   let currentStreak = 0;
-  // If the user practiced today, start consecutive check from today.
-  // If the user practiced yesterday (but not today yet), their streak is still alive! Start from yesterday.
-  if (mostRecentMs === todayMs || mostRecentMs === todayMs - ONE_DAY_MS) {
-    let expectedMs = mostRecentMs;
-    for (const dayStr of uniqueDays) {
-      const [y, m, d] = dayStr.split('-').map(Number);
-      const curMs = Date.UTC(y, m - 1, d);
-      if (curMs === expectedMs) {
+  if (uniqueDays[0] === todayStr || uniqueDays[0] === yesterdayStr) {
+    let checkDate = new Date(uniqueDays[0] === todayStr ? now : yesterdayObj);
+    for (const day of uniqueDays) {
+      const year = checkDate.getFullYear();
+      const month = String(checkDate.getMonth() + 1).padStart(2, '0');
+      const d = String(checkDate.getDate()).padStart(2, '0');
+      const expectedDayStr = `${year}-${month}-${d}`;
+      if (day === expectedDayStr) {
         currentStreak++;
-        expectedMs -= ONE_DAY_MS;
+        checkDate.setDate(checkDate.getDate() - 1);
       } else {
         break;
       }
     }
   }
 
-  // Longest streak across all recorded activity
-  const ascDays = [...uniqueDays].reverse();
   let longestStreak = currentStreak;
+  const ascDays = [...uniqueDays].reverse();
   let tempStreak = 0;
-  let prevMs: number | null = null;
-  for (const dayStr of ascDays) {
-    const [y, m, d] = dayStr.split('-').map(Number);
-    const curMs = Date.UTC(y, m - 1, d);
-    if (prevMs === null) {
+  let prevDate: Date | null = null;
+  for (const day of ascDays) {
+    const curDate = new Date(`${day}T00:00:00`);
+    if (!prevDate) {
       tempStreak = 1;
     } else {
-      const diffDays = Math.round((curMs - prevMs) / ONE_DAY_MS);
+      const diffTime = curDate.getTime() - prevDate.getTime();
+      const diffDays = Math.round(diffTime / (1000 * 3600 * 24));
       if (diffDays === 1) {
         tempStreak++;
       } else if (diffDays > 1) {
         tempStreak = 1;
       }
     }
-    prevMs = curMs;
+    prevDate = curDate;
     if (tempStreak > longestStreak) {
       longestStreak = tempStreak;
     }
@@ -414,7 +416,8 @@ export function refreshProfileLockStatus(profile: StudentAcademyProfile): Studen
       const lesson = level.lessons[sIdx];
       const existing = updatedProgress[lesson.id];
 
-      if (profile.trainerOverrideUnlockAll) {
+      // If academy is globally unlocked or user has trainer override
+      if (profile.trainerOverrideUnlockAll || isAcademyGloballyOpen()) {
         if (!existing || existing.status === 'locked') {
           updatedProgress[lesson.id] = {
             lessonId: lesson.id,
@@ -427,6 +430,35 @@ export function refreshProfileLockStatus(profile: StudentAcademyProfile): Studen
             guidedCompleted: existing?.guidedCompleted || false,
             conceptRead: existing?.conceptRead || false,
           };
+        }
+        continue;
+      }
+
+      // Check if student has access to this lesson via an active assignment
+      const access = checkLessonAccess(
+        level.id,
+        lesson.id,
+        { id: profile.studentId, classId: profile.classId },
+        profile
+      );
+      if (access.isAccessible) {
+        if (!existing || existing.status === 'locked') {
+          updatedProgress[lesson.id] = {
+            lessonId: lesson.id,
+            studentId: profile.studentId,
+            status: 'unlocked',
+            attemptsCount: existing?.attemptsCount || 0,
+            bestWpm: existing?.bestWpm || 0,
+            bestAccuracy: existing?.bestAccuracy || 0,
+            completedDrillNumbers: existing?.completedDrillNumbers || [],
+            guidedCompleted: existing?.guidedCompleted || false,
+            conceptRead: existing?.conceptRead || false,
+          };
+        }
+        if (updatedProgress[lesson.id].status !== 'mastered' && !firstPendingFound) {
+          firstPendingFound = true;
+          activeLessonId = lesson.id;
+          highestLevel = level.id;
         }
         continue;
       }
@@ -809,39 +841,76 @@ export function getAcademyAssignments(): AcademyAssignment[] {
   try {
     const raw = localStorage.getItem(ASSIGNMENTS_KEY);
     if (raw) {
-      return JSON.parse(raw);
+      const list: AcademyAssignment[] = JSON.parse(raw);
+      // Auto-upgrade legacy restricted default assignment (where only levels 1-2 or 6 lessons were open)
+      const hasRestrictedDefault = list.some(
+        a =>
+          (a.id === 'assign_week1_fundamentals' || a.id.includes('fundamentals')) &&
+          (a.levelIds?.length <= 2 || (a.lessonIds && a.lessonIds.length > 0 && a.lessonIds.length < 20))
+      );
+      if (hasRestrictedDefault) {
+        const upgraded = list.map(a => {
+          if (a.id === 'assign_week1_fundamentals' || a.id.includes('fundamentals')) {
+            return {
+              ...a,
+              levelIds: [1, 2, 3, 4, 5, 6, 7],
+              lessonIds: [], // All lessons in all levels
+              dueDate: new Date(Date.now() + 86400000 * 365).toISOString(),
+            };
+          }
+          return a;
+        });
+        localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(upgraded));
+        return upgraded;
+      }
+      return list;
     }
   } catch (e) {
     console.error('Failed to get academy assignments:', e);
   }
 
-  // Pre-seed an active assignment so students have clear assigned curriculum
+  // Pre-seed an active assignment covering ALL 7 LEVELS and ALL lessons so all students have full access
   const defaultAssignment: AcademyAssignment = {
-    id: 'assign_week1_fundamentals',
-    title: 'Week 1: Keyboard Fundamentals & Touch Foundations',
+    id: 'assign_core_comprehensive_touch_typing',
+    title: 'Typing Academy — Comprehensive Touch Typing Track (All Cohorts)',
     classId: 'all',
-    className: 'All CSE & AI Batches (2024-28)',
+    className: 'All Batches & Classes (Global Access)',
     trainerId: 'trn-1',
     curriculumId: DEFAULT_CURRICULUM.id,
-    levelIds: [1, 2],
-    lessonIds: ['l1-lesson-1', 'l1-lesson-2', 'l1-lesson-3', 'l1-lesson-4', 'l2-lesson-1', 'l2-lesson-2'],
+    levelIds: [1, 2, 3, 4, 5, 6, 7],
+    lessonIds: [], // Empty means ALL lessons in levels 1 to 7 are unlocked
     minWpm: 15,
     minAccuracy: 95,
-    startDate: new Date(Date.now() - 86400000 * 2).toISOString(),
-    dueDate: new Date(Date.now() + 86400000 * 7).toISOString(),
+    startDate: new Date(Date.now() - 86400000 * 30).toISOString(),
+    dueDate: new Date(Date.now() + 86400000 * 365).toISOString(),
     status: 'active',
-    createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+    createdAt: new Date(Date.now() - 86400000 * 30).toISOString(),
   };
+
+  try {
+    localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify([defaultAssignment]));
+  } catch {}
 
   return [defaultAssignment];
 }
 
 export function saveAcademyAssignment(assignment: Omit<AcademyAssignment, 'id' | 'createdAt'>): AcademyAssignment {
+  const isGlobal =
+    !assignment.classId ||
+    assignment.classId.trim().toLowerCase() === 'all' ||
+    assignment.classId.trim() === '*' ||
+    (assignment.className && assignment.className.toLowerCase().includes('all'));
+
   const full: AcademyAssignment = {
     ...assignment,
+    classId: isGlobal ? 'all' : assignment.classId,
+    className: isGlobal ? 'All Batches & Classes (Global Access)' : (assignment.className || 'Assigned Class'),
+    levelIds: assignment.levelIds && assignment.levelIds.length > 0 ? assignment.levelIds : [1, 2, 3, 4, 5, 6, 7],
+    lessonIds: assignment.lessonIds || [],
     id: `assign_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
     createdAt: new Date().toISOString(),
   };
+
   const list = getAcademyAssignments();
   list.unshift(full);
   try {
@@ -849,6 +918,58 @@ export function saveAcademyAssignment(assignment: Omit<AcademyAssignment, 'id' |
   } catch (e) {
     console.error(e);
   }
+
+  // If assigned globally for all batches/classes, also turn on global academy open flag
+  if (isGlobal) {
+    try {
+      localStorage.setItem(GLOBAL_ACADEMY_OPEN_KEY, JSON.stringify(true));
+    } catch {}
+    setAcademyGloballyOpen(true);
+  }
+
+  broadcastAcademySync({ type: 'ASSIGNMENT_UPDATE', assignment: full, isOpen: isGlobal ? true : undefined });
+
+  // Sync to Supabase audit_logs
+  if (isSupabaseConfigured()) {
+    supabase
+      .from('audit_logs')
+      .insert([
+        {
+          admin_id: null,
+          admin_name: 'Trainer / Faculty',
+          action: 'ACADEMY_ASSIGNMENT',
+          entity_type: 'academy',
+          entity_id: full.id,
+          details: full
+        }
+      ])
+      .then(({ error }) => {
+        if (error) console.error('Supabase academy assignment insert error:', error);
+      });
+
+    if (isGlobal) {
+      supabase
+        .from('audit_logs')
+        .insert([
+          {
+            admin_id: null,
+            admin_name: 'Trainer / Faculty',
+            action: 'ACADEMY_GLOBAL_STATUS',
+            entity_type: 'academy',
+            entity_id: 'global_access',
+            details: {
+              isGloballyOpen: true,
+              updatedAt: new Date().toISOString(),
+              reason: 'Assigned for All'
+            }
+          }
+        ])
+        .then(({ error }) => {
+          if (error) console.error('Supabase global status insert error:', error);
+        });
+    }
+  }
+
   return full;
 }
 
@@ -862,6 +983,7 @@ export function updateAcademyAssignment(id: string, updates: Partial<AcademyAssi
     } catch (e) {
       console.error(e);
     }
+    broadcastAcademySync({ type: 'ASSIGNMENT_UPDATE', assignment: list[idx] });
   }
 }
 
@@ -872,18 +994,109 @@ export function deleteAcademyAssignment(id: string): void {
   } catch (e) {
     console.error(e);
   }
+
+  broadcastAcademySync({ type: 'ASSIGNMENT_UPDATE', assignmentId: id });
+
+  if (isSupabaseConfigured()) {
+    supabase
+      .from('audit_logs')
+      .insert([
+        {
+          admin_id: null,
+          admin_name: 'Trainer / Admin',
+          action: 'ACADEMY_ASSIGNMENT_DELETE',
+          entity_type: 'academy',
+          entity_id: id,
+          details: { deletedAssignmentId: id, timestamp: new Date().toISOString() }
+        }
+      ])
+      .then(({ error }) => {
+        if (error) console.error('Supabase academy assignment delete error:', error);
+      });
+  }
+}
+
+/**
+ * Synchronize assignments and global open flag from cloud database (Supabase)
+ */
+export async function syncAcademyFromCloud(): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+
+  try {
+    // 1. Fetch latest ACADEMY_GLOBAL_STATUS
+    const { data: statusLogs } = await supabase
+      .from('audit_logs')
+      .select('*')
+      .eq('action', 'ACADEMY_GLOBAL_STATUS')
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (statusLogs && statusLogs.length > 0) {
+      const details = typeof statusLogs[0].details === 'string'
+        ? JSON.parse(statusLogs[0].details)
+        : statusLogs[0].details;
+      if (details && details.isGloballyOpen !== undefined) {
+        const cloudOpen = Boolean(details.isGloballyOpen);
+        localStorage.setItem(GLOBAL_ACADEMY_OPEN_KEY, JSON.stringify(cloudOpen));
+      }
+    }
+
+    // 2. Fetch ACADEMY_ASSIGNMENT and ACADEMY_ASSIGNMENT_DELETE
+    const { data: assignLogs } = await supabase
+      .from('audit_logs')
+      .select('*')
+      .in('action', ['ACADEMY_ASSIGNMENT', 'ACADEMY_ASSIGNMENT_DELETE'])
+      .order('created_at', { ascending: true });
+
+    if (assignLogs && assignLogs.length > 0) {
+      const currentList = getAcademyAssignments();
+      const assignmentMap = new Map<string, AcademyAssignment>();
+      currentList.forEach(a => assignmentMap.set(a.id, a));
+
+      for (const log of assignLogs) {
+        const details = typeof log.details === 'string' ? JSON.parse(log.details) : log.details;
+        if (log.action === 'ACADEMY_ASSIGNMENT' && details?.id) {
+          assignmentMap.set(details.id, details as AcademyAssignment);
+          // If this cloud assignment is for all, ensure global open flag is active
+          const isGlobalAssign =
+            !details.classId ||
+            details.classId === 'all' ||
+            details.classId === '*' ||
+            (details.className && details.className.toLowerCase().includes('all'));
+          if (isGlobalAssign && (details.status === 'active' || !details.status)) {
+            localStorage.setItem(GLOBAL_ACADEMY_OPEN_KEY, JSON.stringify(true));
+          }
+        } else if (log.action === 'ACADEMY_ASSIGNMENT_DELETE') {
+          const toDeleteId = details?.deletedAssignmentId || log.entity_id;
+          if (toDeleteId) {
+            assignmentMap.delete(toDeleteId);
+          }
+        }
+      }
+
+      const merged = Array.from(assignmentMap.values());
+      if (merged.length > 0) {
+        localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(merged));
+      }
+    }
+
+    broadcastAcademySync({ type: 'ASSIGNMENT_UPDATE' });
+  } catch (err) {
+    console.warn('Failed to sync academy from cloud:', err);
+  }
 }
 
 /**
  * Checks if a specific lesson or level is currently accessible to a student based on:
- * 1. Global open toggle by trainer/admin
+ * 1. Global open toggle by trainer/admin (or assignment to 'all' cohorts)
  * 2. Active Academy Assignment covering this level/lesson and student's class/batch
  * 3. Whether the student has already completed/mastered it (past completions are always accessible)
  */
 export function checkLessonAccess(
   levelId: number,
   lessonId: string,
-  student?: { id: string; classId?: string; role?: string; rollNo?: string } | null
+  student?: { id: string; classId?: string; role?: string; rollNo?: string } | null,
+  cachedProfile?: StudentAcademyProfile | null
 ): {
   isAccessible: boolean;
   assignment?: AcademyAssignment;
@@ -895,51 +1108,78 @@ export function checkLessonAccess(
     return { isAccessible: true, isCompleted: false };
   }
 
-  const studentId = student?.id || 'std-24b11cs355';
-  const profile = getStudentAcademyProfile(studentId);
-  const isCompleted = Boolean(profile?.lessonProgress[lessonId]?.status === 'mastered');
-
-  // If already completed or user has override unlock
-  if (isCompleted || profile?.trainerOverrideUnlockAll) {
-    return { isAccessible: true, isCompleted };
+  // If Academy is globally opened by trainer/admin (or assign for all is active)
+  if (isAcademyGloballyOpen()) {
+    return { isAccessible: true, isCompleted: false };
   }
 
-  // If Academy is globally opened by trainer
-  if (isAcademyGloballyOpen()) {
+  const studentId = student?.id || student?.rollNo || 'std-24b11cs355';
+
+  // Read mastery status directly without triggering recursive getStudentAcademyProfile
+  let isCompleted = false;
+  let trainerOverrideUnlockAll = false;
+  if (cachedProfile) {
+    isCompleted = Boolean(cachedProfile.lessonProgress?.[lessonId]?.status === 'mastered');
+    trainerOverrideUnlockAll = Boolean(cachedProfile.trainerOverrideUnlockAll);
+  } else {
+    try {
+      const raw = localStorage.getItem(`${PROFILE_KEY_PREFIX}${studentId}`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        isCompleted = Boolean(parsed?.lessonProgress?.[lessonId]?.status === 'mastered');
+        trainerOverrideUnlockAll = Boolean(parsed?.trainerOverrideUnlockAll);
+      }
+    } catch {}
+  }
+
+  // If already completed or student has individual override unlock
+  if (isCompleted || trainerOverrideUnlockAll) {
     return { isAccessible: true, isCompleted };
   }
 
   // Check active assignments
-  const assignments = getAcademyAssignments().filter(a => a.status === 'active');
+  const assignments = getAcademyAssignments().filter(a => a.status === 'active' || !a.status);
   const now = Date.now();
 
-  const studentClassId = student?.classId || 'cls-cse-a';
+  const studentClassId = (student?.classId || '').trim();
+  const studentIdClean = (student?.id || '').trim();
+  const studentRollNo = (student?.rollNo || '').trim();
 
   for (const assign of assignments) {
-    // Robust date window checking (full day support with 24h timezone grace window)
+    // Robust date window checking (full day support with 48h timezone grace window)
     if (assign.startDate) {
       const startStr = assign.startDate.includes('T') ? assign.startDate : `${assign.startDate}T00:00:00`;
       const start = new Date(startStr).getTime();
-      if (!isNaN(start) && now < start - 86400000) {
+      if (!isNaN(start) && now < start - 86400000 * 2) {
         continue;
       }
     }
 
     if (assign.dueDate) {
-      const dueStr = assign.dueDate.includes('T') ? assign.dueDate : `${assign.dueDate}T23:59:59`;
+      const dueStr = assign.dueDate.includes('T') ? assign.dueDate : `${assign.dueDate}T23:59:59.999`;
       const end = new Date(dueStr).getTime();
-      if (!isNaN(end) && now > end + 86400000) {
+      if (!isNaN(end) && now > end + 86400000 * 2) {
         continue;
       }
     }
 
-    // Check class targeting (support 'all', specific classId, className wildcard, or individual studentId)
-    const matchesClass =
-      assign.classId === 'all' ||
+    // Check class targeting:
+    // Support 'all', 'global', '*', empty classId, className wildcard, exact student classId, student id, or student rollNo
+    const assignClass = (assign.classId || '').trim().toLowerCase();
+    const assignClassName = (assign.className || '').trim().toLowerCase();
+
+    const isGlobalTarget =
       !assign.classId ||
-      assign.classId === studentClassId ||
-      (student?.id && assign.classId === student.id) ||
-      (assign.className && assign.className.toLowerCase().includes('all')) ||
+      assignClass === 'all' ||
+      assignClass === '*' ||
+      assignClass === 'global' ||
+      assignClassName.includes('all');
+
+    const matchesClass =
+      isGlobalTarget ||
+      (studentClassId && assign.classId === studentClassId) ||
+      (studentIdClean && assign.classId === studentIdClean) ||
+      (studentRollNo && assign.classId === studentRollNo) ||
       (student?.classId && assign.classId === student.classId);
 
     if (!matchesClass) {

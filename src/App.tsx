@@ -15,6 +15,7 @@ import { CertificateVerificationModal } from './components/CertificateVerificati
 import { PublicCertificateVerificationPage } from './components/PublicCertificateVerificationPage';
 import { ModuleUnderDevelopment } from './components/ModuleUnderDevelopment';
 import { DeveloperFooter } from './components/DeveloperFooter';
+import { isAcademyGloballyOpen } from './services/academyService';
 import { TypingTest } from './types';
 
 const MainLayout: React.FC = () => {
@@ -256,7 +257,7 @@ const MainLayout: React.FC = () => {
         )}
 
         {currentView === 'academy' && (
-          isModuleDisabled('academy') ? (
+          isModuleDisabled('academy') && !isAcademyGloballyOpen() ? (
             <ModuleUnderDevelopment
               moduleName="Touch Typing Academy"
               customMessage={moduleControls.academy?.statusMessage}

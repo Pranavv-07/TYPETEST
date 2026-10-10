@@ -9,7 +9,14 @@ import { StudentLeaderboard } from './StudentLeaderboard';
 import { PerformanceOverTimeChart } from './PerformanceOverTimeChart';
 import { D3FingerHeatmap } from './D3FingerHeatmap';
 import { StudentAchievements } from './StudentAchievements';
-import { getStudentAttemptHistory, calculateStreakFromDates, getStudentAcademyProfile } from '../services/academyService';
+import {
+  getStudentAttemptHistory,
+  calculateStreakFromDates,
+  getStudentAcademyProfile,
+  getAcademyAssignments,
+  isAcademyGloballyOpen,
+  syncAcademyFromCloud
+} from '../services/academyService';
 import { formatISTDateTime, formatISTDate } from '../utils/dateUtils';
 import {
   GraduationCap,
@@ -58,6 +65,39 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
 
   // Enrolled class
   const studentClass = classes.find(c => c.id === currentUser?.classId) || classes[0];
+
+  // Academy assignments state and cloud synchronization
+  const [academyAssignmentsList, setAcademyAssignmentsList] = useState(() => getAcademyAssignments());
+
+  useEffect(() => {
+    const handleSync = () => {
+      setAcademyAssignmentsList(getAcademyAssignments());
+    };
+    window.addEventListener('storage', handleSync);
+    window.addEventListener('typetest_academy_change', handleSync);
+    syncAcademyFromCloud().then(handleSync).catch(() => {});
+    return () => {
+      window.removeEventListener('storage', handleSync);
+      window.removeEventListener('typetest_academy_change', handleSync);
+    };
+  }, []);
+
+  const activeAcademyAssignments = useMemo(() => {
+    const list = academyAssignmentsList.filter(a => a.status === 'active' || !a.status);
+    if (!currentUser) return list;
+    const studentClassId = currentUser.classId || '';
+    return list.filter(a => {
+      const assignClass = (a.classId || '').trim().toLowerCase();
+      const assignClassName = (a.className || '').trim().toLowerCase();
+      const isGlobal =
+        !a.classId ||
+        assignClass === 'all' ||
+        assignClass === '*' ||
+        assignClass === 'global' ||
+        assignClassName.includes('all');
+      return isGlobal || (studentClassId && a.classId === studentClassId) || (currentUser.id && a.classId === currentUser.id);
+    });
+  }, [academyAssignmentsList, currentUser]);
 
   // Current time for availability checking
   const getServerDate = useServerTime();
@@ -240,6 +280,20 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
           <LayoutDashboard className="w-4 h-4" />
           <span>Dashboard</span>
         </button>
+        {onOpenAcademy && (
+          <button
+            onClick={onOpenAcademy}
+            className="pb-3 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all cursor-pointer border-transparent text-amber-400 hover:text-amber-300"
+          >
+            <GraduationCap className="w-4 h-4 text-amber-400" />
+            <span>Typing Academy Track</span>
+            {activeAcademyAssignments.length > 0 && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                Assigned ({activeAcademyAssignments.length})
+              </span>
+            )}
+          </button>
+        )}
         <button
           onClick={() => setActiveTab('achievements')}
           className={`pb-3 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all cursor-pointer ${
@@ -419,6 +473,35 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
                 <strong>Trainer & Institutional Assessments:</strong> These tests are assigned directly by your trainer or organization. Anti-cheat monitoring is active — copying, pasting, and window switching are audited. Custom tests can be attempted <strong>only once</strong> within their active time window (in IST).
               </div>
             </div>
+
+            {/* Active Academy Track Banner if Assigned */}
+            {activeAcademyAssignments.length > 0 && onOpenAcademy && (
+              <div className="bg-gradient-to-r from-amber-500/15 via-emerald-500/10 to-slate-900 border border-amber-500/40 rounded-2xl p-5 shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
+                      <GraduationCap className="w-3.5 h-3.5 text-amber-400" /> Faculty Curriculum Track
+                    </span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      Open for All Students
+                    </span>
+                  </div>
+                  <h3 className="text-base font-black text-slate-100">
+                    {activeAcademyAssignments[0].title}
+                  </h3>
+                  <p className="text-xs text-slate-300">
+                    Cohort Target: <strong className="text-slate-100">{activeAcademyAssignments[0].className}</strong> • Levels: <strong className="text-emerald-400">{activeAcademyAssignments[0].levelIds?.join(', ') || '1 to 7'}</strong> • Passing Criteria: <strong className="text-emerald-400">{activeAcademyAssignments[0].minAccuracy || 95}% Min Accuracy</strong>
+                  </p>
+                </div>
+                <button
+                  onClick={onOpenAcademy}
+                  className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-all shadow-md flex items-center gap-2 shrink-0 cursor-pointer"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span>Open Academy Track</span>
+                </button>
+              </div>
+            )}
 
             {/* Sub-category Filter Tabs */}
             <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-3">

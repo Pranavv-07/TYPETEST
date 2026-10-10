@@ -61,6 +61,7 @@ import {
   updateCertificateStatusInDatabase,
   generateUniqueCertificateId
 } from '../services/supabaseService';
+import { syncAcademyFromCloud } from '../services/academyService';
 import { soundController } from '../utils/audio';
 
 interface AppContextType {
@@ -336,6 +337,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setCertificates(certsData);
       setViolations(violsData);
       setAuditLogs(logsData);
+
+      // Sync Academy curriculum access, assignments, and global open state from cloud
+      syncAcademyFromCloud().catch(e => console.warn('Academy cloud sync:', e));
     } catch (err) {
       console.error('Failed to load institutional records:', err);
     } finally {

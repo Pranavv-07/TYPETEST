@@ -19,7 +19,8 @@ import {
   getStudentAcademyProfile,
   getActiveCurriculum,
   getStudentAttemptHistory,
-  calculateStreakFromDates
+  calculateStreakFromDates,
+  isAcademyGloballyOpen
 } from '../services/academyService';
 
 interface StudentDashboardProps {
@@ -186,10 +187,15 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       {/* Typing Academy Curriculum Featured Banner */}
       <div className="bg-gradient-to-r from-amber-500/15 via-emerald-500/10 to-slate-900 border border-amber-500/30 rounded-3xl p-6 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-5">
         <div className="space-y-2 flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
               <GraduationCap className="w-3.5 h-3.5" /> Typing Academy
             </span>
+            {isAcademyGloballyOpen() && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                ✓ Assigned for All Cohorts
+              </span>
+            )}
             <span className="text-xs font-mono text-slate-300 font-semibold">
               {academyStats.mastered} of {academyStats.total} Lessons Mastered ({academyStats.percent}%)
             </span>

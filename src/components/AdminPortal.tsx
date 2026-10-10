@@ -43,9 +43,15 @@ import {
   Power,
   Swords,
   Trophy,
-  Sparkles
+  Sparkles,
+  Unlock
 } from 'lucide-react';
 import { checkDatabaseConnection, DatabaseConnectionStatus } from '../services/supabaseService';
+import {
+  isAcademyGloballyOpen,
+  setAcademyGloballyOpen,
+  saveAcademyAssignment
+} from '../services/academyService';
 
 interface AdminPortalProps {
   onOpenVerification?: (certId: string) => void;
@@ -59,6 +65,22 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
   const [selectedViewCert, setSelectedViewCert] = useState<StudentCertificate | null>(null);
   const [adminCertSearch, setAdminCertSearch] = useState('');
   const [adminCertStatusFilter, setAdminCertStatusFilter] = useState<'all' | 'valid' | 'revoked'>('all');
+  const [academyGlobalOpen, setAcademyGlobalOpen] = useState(() => isAcademyGloballyOpen());
+
+  useEffect(() => {
+    const handleSync = () => {
+      setAcademyGlobalOpen(isAcademyGloballyOpen());
+    };
+    window.addEventListener('storage', handleSync);
+    window.addEventListener('typetest_academy_change', handleSync);
+    const ch = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('typetest_academy_sync') : null;
+    if (ch) ch.onmessage = handleSync;
+    return () => {
+      window.removeEventListener('storage', handleSync);
+      window.removeEventListener('typetest_academy_change', handleSync);
+      if (ch) ch.close();
+    };
+  }, []);
 
   useEffect(() => {
     checkDatabaseConnection().then(setDbStatus).catch(console.error);
@@ -1719,6 +1741,68 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
                         className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
                       />
                     </div>
+
+                    {/* Extra Global Access & Assignment Controls for Touch Typing Academy */}
+                    {mod.key === 'academy' && (
+                      <div className="mt-4 pt-3 border-t border-slate-800 space-y-3 bg-slate-900/60 p-3.5 rounded-xl border border-slate-800/60">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div>
+                            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-400 block">
+                              Academy Student Access Window
+                            </span>
+                            <span className="text-xs text-slate-300">
+                              Mode: <strong className={academyGlobalOpen ? 'text-emerald-400' : 'text-amber-400'}>
+                                {academyGlobalOpen ? 'Open for All Students (Unrestricted Practice)' : 'Strict Scheduled Cohorts Only'}
+                              </strong>
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const next = !academyGlobalOpen;
+                                setAcademyGloballyOpen(next);
+                                setAcademyGlobalOpen(next);
+                              }}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-bold font-mono transition-all flex items-center gap-1.5 cursor-pointer border ${
+                                academyGlobalOpen
+                                  ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                                  : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/40'
+                              }`}
+                            >
+                              {academyGlobalOpen ? <Lock className="w-3.5 h-3.5 text-amber-400" /> : <Unlock className="w-3.5 h-3.5 text-emerald-400" />}
+                              <span>{academyGlobalOpen ? 'Lock Academy (Schedule Only)' : 'Unlock Academy for All'}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                saveAcademyAssignment({
+                                  title: 'Touch Typing Academy — Comprehensive Track (All Cohorts)',
+                                  classId: 'all',
+                                  className: 'All Batches & Classes (Global Access)',
+                                  trainerId: 'admin',
+                                  curriculumId: 'curriculum-touch-typing-v1',
+                                  levelIds: [1, 2, 3, 4, 5, 6, 7],
+                                  lessonIds: [],
+                                  minWpm: 15,
+                                  minAccuracy: 95,
+                                  startDate: new Date(Date.now() - 86400000).toISOString(),
+                                  dueDate: new Date(Date.now() + 86400000 * 365).toISOString(),
+                                  status: 'active'
+                                });
+                                setAcademyGlobalOpen(true);
+                                alert('All 7 Academy Levels have been successfully assigned to all students & batches!');
+                              }}
+                              className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold font-mono transition-all flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <GraduationCap className="w-3.5 h-3.5" />
+                              <span>Assign All 7 Levels to All Cohorts</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}

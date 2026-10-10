@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   AcademyCurriculum,
   AcademyLevel,
@@ -72,22 +72,43 @@ export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> =
 
   // Assignment Creation Form State
   const [showAssignModal, setShowAssignModal] = useState(false);
-  const [assignClassId, setAssignClassId] = useState<string>(classes[0]?.id || '');
-  const [assignTitle, setAssignTitle] = useState('Typing Academy — Beginner & Intermediate Track');
-  const [assignLevels, setAssignLevels] = useState<number[]>([1, 2, 3]);
+  const [assignClassId, setAssignClassId] = useState<string>('all');
+  const [assignTitle, setAssignTitle] = useState('Typing Academy — Comprehensive Touch Typing Track (All Cohorts)');
+  const [assignLevels, setAssignLevels] = useState<number[]>([1, 2, 3, 4, 5, 6, 7]);
   const [assignStartDate, setAssignStartDate] = useState(
     new Date().toISOString().split('T')[0]
   );
   const [assignDueDate, setAssignDueDate] = useState(
-    new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0]
+    new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0]
   );
   const [assignmentsList, setAssignmentsList] = useState<AcademyAssignment[]>(() =>
     getAcademyAssignments()
   );
 
+  // Sync listener across windows & tabs
+  useEffect(() => {
+    const handleSync = () => {
+      setAssignmentsList(getAcademyAssignments());
+      setGloballyOpen(isAcademyGloballyOpen());
+    };
+    window.addEventListener('storage', handleSync);
+    window.addEventListener('typetest_academy_change', handleSync);
+
+    const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('typetest_academy_sync') : null;
+    if (channel) {
+      channel.onmessage = handleSync;
+    }
+    return () => {
+      window.removeEventListener('storage', handleSync);
+      window.removeEventListener('typetest_academy_change', handleSync);
+      if (channel) channel.close();
+    };
+  }, []);
+
   const handleToggleGlobalAcademy = (open: boolean) => {
     setAcademyGloballyOpen(open);
     setGloballyOpen(open);
+    setAssignmentsList(getAcademyAssignments());
   };
 
   // Student list with computed progress
@@ -170,15 +191,16 @@ export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> =
   const handleCreateAssignment = (e: React.FormEvent) => {
     e.preventDefault();
     const targetClass = classes.find(c => c.id === assignClassId);
-    const resolvedClassName = assignClassId === 'all' ? 'All Batches & Classes' : (targetClass?.name || 'Assigned Class');
+    const resolvedClassName = assignClassId === 'all' ? 'All Batches & Classes (Global Access)' : (targetClass?.name || 'Assigned Class');
 
     saveAcademyAssignment({
-      title: assignTitle.trim(),
+      title: assignTitle.trim() || 'Typing Academy Track',
       classId: assignClassId,
       className: resolvedClassName,
       trainerId,
       curriculumId: curriculum.id,
       levelIds: assignLevels.length > 0 ? assignLevels : [1, 2, 3, 4, 5, 6, 7],
+      lessonIds: [], // Empty means ALL lessons in the selected levels
       minWpm: 20,
       minAccuracy: 95,
       startDate: assignStartDate,
@@ -187,6 +209,10 @@ export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> =
     });
 
     setAssignmentsList(getAcademyAssignments());
+    if (assignClassId === 'all') {
+      setGloballyOpen(true);
+      setAcademyGloballyOpen(true);
+    }
     setShowAssignModal(false);
   };
 
@@ -625,20 +651,96 @@ export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> =
 
               <div>
                 <label className="text-xs font-mono text-slate-400 block mb-1">
-                  Target Class
+                  Target Class / Cohort
                 </label>
                 <select
                   value={assignClassId}
-                  onChange={e => setAssignClassId(e.target.value)}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setAssignClassId(val);
+                    if (val === 'all') {
+                      setAssignTitle('Typing Academy — Comprehensive Touch Typing Track (All Cohorts)');
+                      setAssignLevels([1, 2, 3, 4, 5, 6, 7]);
+                    } else {
+                      const c = classes.find(item => item.id === val);
+                      setAssignTitle(`Typing Academy — ${c?.name || 'Cohort'} Track`);
+                    }
+                  }}
                   className="w-full p-3 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 font-mono"
                 >
-                  <option value="all">🌟 All Batches & Classes (Global Access)</option>
+                  <option value="all">🌟 All Batches & Classes (Global Access for All Students)</option>
                   {classes.map(c => (
                     <option key={c.id} value={c.id}>
                       {c.name}
                     </option>
                   ))}
                 </select>
+                {assignClassId === 'all' && (
+                  <p className="text-[11px] text-emerald-400 mt-1 flex items-center gap-1 font-mono">
+                    <span>✓ This will unlock and assign the curriculum for all enrolled students across all departments.</span>
+                  </p>
+                )}
+              </div>
+
+              {/* Curriculum Level Selector */}
+              <div className="space-y-2 pt-1 border-t border-slate-800/80">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-mono text-slate-400">
+                    Included Levels ({assignLevels.length} of 7 Selected)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (assignLevels.length === 7) {
+                        setAssignLevels([1]);
+                      } else {
+                        setAssignLevels([1, 2, 3, 4, 5, 6, 7]);
+                      }
+                    }}
+                    className="text-[11px] font-mono text-emerald-400 hover:text-emerald-300 font-bold cursor-pointer"
+                  >
+                    {assignLevels.length === 7 ? 'Deselect All' : 'Select All 7 Levels'}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { id: 1, name: 'L1: Home Row' },
+                    { id: 2, name: 'L2: Top Row' },
+                    { id: 3, name: 'L3: Bottom Row' },
+                    { id: 4, name: 'L4: Numbers' },
+                    { id: 5, name: 'L5: Symbols' },
+                    { id: 6, name: 'L6: Code Syntax' },
+                    { id: 7, name: 'L7: Speed Capstone' },
+                  ].map(lvl => {
+                    const isSelected = assignLevels.includes(lvl.id);
+                    return (
+                      <button
+                        key={lvl.id}
+                        type="button"
+                        onClick={() => {
+                          if (isSelected) {
+                            if (assignLevels.length > 1) {
+                              setAssignLevels(assignLevels.filter(id => id !== lvl.id));
+                            }
+                          } else {
+                            setAssignLevels([...assignLevels, lvl.id].sort((a, b) => a - b));
+                          }
+                        }}
+                        className={`p-2 rounded-xl text-left text-xs font-mono transition-all border cursor-pointer ${
+                          isSelected
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 font-bold'
+                            : 'bg-slate-950 text-slate-500 border-slate-800 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span>{lvl.name}</span>
+                          {isSelected && <span className="text-[10px] text-emerald-400 font-bold">✓</span>}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

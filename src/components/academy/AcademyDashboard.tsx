@@ -16,7 +16,8 @@ import {
   checkLessonAccess,
   getAcademyAssignments,
   isAcademyGloballyOpen,
-  setAcademyGloballyOpen
+  setAcademyGloballyOpen,
+  syncAcademyFromCloud
 } from '../../services/academyService';
 import { LessonView } from './LessonView';
 import { DiagnosticModal } from './DiagnosticModal';
@@ -90,15 +91,44 @@ export const AcademyDashboard: React.FC<AcademyDashboardProps> = ({
   const [activeCertificate, setActiveCertificate] = useState<StudentCertificate | null>(null);
   const [selectedBadge, setSelectedBadge] = useState<CertificationBadge | null>(null);
 
-  // Refresh profile whenever student changes
+  // Refresh profile & assignments whenever student changes or sync updates occur
   useEffect(() => {
-    setProfile(getStudentAcademyProfile(studentId));
+    const refreshAll = () => {
+      setGloballyOpenState(isAcademyGloballyOpen());
+      setAssignments(getAcademyAssignments());
+      setProfile(getStudentAcademyProfile(studentId));
+    };
+
+    refreshAll();
+    syncAcademyFromCloud().then(refreshAll).catch(() => {});
+
+    // Listen to storage changes from other tabs or windows
+    const handleStorage = () => {
+      refreshAll();
+    };
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('typetest_academy_change', handleStorage);
+
+    const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('typetest_academy_sync') : null;
+    if (channel) {
+      channel.onmessage = () => {
+        refreshAll();
+      };
+    }
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('typetest_academy_change', handleStorage);
+      if (channel) channel.close();
+    };
   }, [studentId]);
 
   const toggleGlobalOpen = () => {
     const next = !globallyOpen;
     setGloballyOpenState(next);
     setAcademyGloballyOpen(next);
+    setAssignments(getAcademyAssignments());
+    setProfile(getStudentAcademyProfile(studentId));
   };
 
   // Overall statistics calculation
@@ -175,10 +205,15 @@ export const AcademyDashboard: React.FC<AcademyDashboardProps> = ({
       <LessonView
         lesson={activeLesson.lesson}
         level={activeLesson.level}
+        profile={profile}
         studentId={studentId}
+        studentName={studentName}
         onBack={() => {
           setActiveLesson(null);
           setProfile(getStudentAcademyProfile(studentId));
+        }}
+        onProfileUpdated={(updated) => {
+          setProfile(updated);
         }}
         onLessonCompleted={() => {
           const updated = getStudentAcademyProfile(studentId);

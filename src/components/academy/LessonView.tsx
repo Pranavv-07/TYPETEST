@@ -13,7 +13,10 @@ import {
   recordStudentLessonAttempt,
   recordStudentDrillCompletion,
   recordConceptRead,
-  getActiveCurriculum
+  getActiveCurriculum,
+  isAcademyGloballyOpen,
+  getStudentAcademyProfile,
+  saveStudentAcademyProfile
 } from '../../services/academyService';
 import { soundController } from '../../utils/audio';
 import confetti from 'canvas-confetti';
@@ -43,11 +46,14 @@ import {
 interface LessonViewProps {
   lesson: AcademyLesson;
   level: AcademyLevel;
-  profile: StudentAcademyProfile;
+  profile?: StudentAcademyProfile;
   studentId: string;
+  studentName?: string;
   onBack: () => void;
   onNextLesson?: (nextLessonId: string) => void;
-  onProfileUpdated: (updated: StudentAcademyProfile) => void;
+  onProfileUpdated?: (updated: StudentAcademyProfile) => void;
+  onLessonCompleted?: () => void;
+  onLessonComplete?: () => void;
 }
 
 // Generate 3 progressive drills for any lesson
@@ -94,17 +100,25 @@ export function resolveLessonDrills(lesson: AcademyLesson): GuidedDrill[] {
 export const LessonView: React.FC<LessonViewProps> = ({
   lesson,
   level,
-  profile,
+  profile: propProfile,
   studentId,
+  studentName,
   onBack,
   onNextLesson,
   onProfileUpdated,
+  onLessonCompleted,
+  onLessonComplete,
 }) => {
+  // Ensure profile is always available safely
+  const profile = useMemo(() => {
+    return propProfile || getStudentAcademyProfile(studentId);
+  }, [propProfile, studentId]);
+
   // Resolve 3 progressive drills
   const drills = useMemo(() => resolveLessonDrills(lesson), [lesson]);
 
   // Current lesson progress from profile
-  const lessonProgress = profile.lessonProgress[lesson.id];
+  const lessonProgress = profile?.lessonProgress?.[lesson.id];
   const isMastered = lessonProgress?.status === 'mastered';
 
   // Sequential Phase State: 'learn' | 'drills' | 'assessment'
@@ -122,7 +136,7 @@ export const LessonView: React.FC<LessonViewProps> = ({
         map[num - 1] = true; // 1-indexed to 0-indexed
       });
     }
-    if (lessonProgress?.guidedCompleted || isMastered || profile.trainerOverrideUnlockAll) {
+    if (lessonProgress?.guidedCompleted || isMastered || profile?.trainerOverrideUnlockAll || isAcademyGloballyOpen()) {
       map[0] = true;
       map[1] = true;
       map[2] = true;
@@ -150,7 +164,8 @@ export const LessonView: React.FC<LessonViewProps> = ({
     (completedDrillsMap[0] && completedDrillsMap[1] && completedDrillsMap[2]) ||
     lessonProgress?.guidedCompleted ||
     isMastered ||
-    profile.trainerOverrideUnlockAll
+    profile?.trainerOverrideUnlockAll ||
+    isAcademyGloballyOpen()
   );
 
   // Find next lesson in curriculum
@@ -189,7 +204,7 @@ export const LessonView: React.FC<LessonViewProps> = ({
         map[num - 1] = true;
       });
     }
-    if (prog?.guidedCompleted || prog?.status === 'mastered' || profile.trainerOverrideUnlockAll) {
+    if (prog?.guidedCompleted || prog?.status === 'mastered' || profile.trainerOverrideUnlockAll || isAcademyGloballyOpen()) {
       map[0] = true;
       map[1] = true;
       map[2] = true;
@@ -326,7 +341,9 @@ export const LessonView: React.FC<LessonViewProps> = ({
 
     setLastAttempt(attempt);
     setIsNewlyMastered(newlyMastered);
-    onProfileUpdated(updatedProfile);
+    if (onProfileUpdated) onProfileUpdated(updatedProfile);
+    if (onLessonCompleted) onLessonCompleted();
+    if (onLessonComplete) onLessonComplete();
     setShowResultsModal(true);
 
     if (newlyMastered) {
@@ -666,7 +683,7 @@ export const LessonView: React.FC<LessonViewProps> = ({
               {drills.map((d, idx) => {
                 const isDone = completedDrillsMap[idx] || allDrillsCompleted;
                 const isActive = activeDrillIndex === idx;
-                const isLocked = idx > 0 && !completedDrillsMap[idx - 1] && !allDrillsCompleted;
+                const isLocked = idx > 0 && !completedDrillsMap[idx - 1] && !allDrillsCompleted && !isAcademyGloballyOpen();
 
                 return (
                   <button
