@@ -87,6 +87,11 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <PlaySquare className="w-3.5 h-3.5" />
               <span>Practice</span>
+              {isModuleDisabled('arena') && (
+                <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                  Paused
+                </span>
+              )}
             </button>
 
             {/* 2. Explore Tests */}
@@ -100,6 +105,11 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <Sparkles className="w-3.5 h-3.5" />
               <span>Tests</span>
+              {isModuleDisabled('tests') && (
+                <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                  Paused
+                </span>
+              )}
             </button>
 
             {/* 3. Multiplayer Arena */}
@@ -115,7 +125,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>Multiplayer</span>
               {isModuleDisabled('multiplayer') && (
                 <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                  Dev
+                  Paused
                 </span>
               )}
             </button>
@@ -133,7 +143,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>Leaderboard</span>
               {isModuleDisabled('leaderboard') && (
                 <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                  Dev
+                  Paused
                 </span>
               )}
             </button>
@@ -151,7 +161,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>Academy</span>
               {isModuleDisabled('academy') && (
                 <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                  Dev
+                  Paused
                 </span>
               )}
             </button>
@@ -167,6 +177,11 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <FileCheck className="w-3.5 h-3.5 text-cyan-400" />
               <span>Verify</span>
+              {isModuleDisabled('verify') && (
+                <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                  Paused
+                </span>
+              )}
             </button>
           </nav>
         </div>

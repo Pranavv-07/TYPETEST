@@ -201,10 +201,10 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
             </span>
           </div>
           <h3 className="text-lg font-black text-slate-100">
-            {academyStats.currentLevel.title}
+            {academyStats.currentLevel?.title || 'Touch Typing Academy Foundation'}
           </h3>
           <p className="text-xs text-slate-300 leading-relaxed max-w-xl">
-            {academyStats.currentLevel.tagline} — Progressive touch-typing mastery with guided anatomical finger cues, rhythmic bigrams, and strict 95% accuracy assessments.
+            {academyStats.currentLevel?.tagline || 'Master keyboard ergonomics and accuracy'} — Progressive touch-typing mastery with guided anatomical finger cues, rhythmic bigrams, and strict 95% accuracy assessments.
           </p>
 
           <div className="w-full max-w-md h-2.5 bg-slate-950 rounded-full overflow-hidden mt-2 border border-slate-800">

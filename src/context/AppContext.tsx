@@ -269,12 +269,32 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       };
       try {
         localStorage.setItem(MODULE_CONTROLS_KEY, JSON.stringify(updated));
+        window.dispatchEvent(new CustomEvent('typetest_module_controls_change', { detail: updated }));
       } catch (err) {
         console.error(err);
       }
       return updated;
     });
   };
+
+  useEffect(() => {
+    const handleSyncModuleControls = () => {
+      try {
+        const saved = localStorage.getItem(MODULE_CONTROLS_KEY);
+        if (saved) {
+          setModuleControlsState(prev => ({ ...DEFAULT_MODULE_CONTROLS, ...prev, ...JSON.parse(saved) }));
+        }
+      } catch (e) {
+        console.error('Failed to sync module controls:', e);
+      }
+    };
+    window.addEventListener('storage', handleSyncModuleControls);
+    window.addEventListener('typetest_module_controls_change' as any, handleSyncModuleControls);
+    return () => {
+      window.removeEventListener('storage', handleSyncModuleControls);
+      window.removeEventListener('typetest_module_controls_change' as any, handleSyncModuleControls);
+    };
+  }, []);
 
   const isModuleDisabled = (moduleKey: PlatformModuleKey): boolean => {
     return Boolean(moduleControls[moduleKey]?.disabled);

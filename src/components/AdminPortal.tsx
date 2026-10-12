@@ -44,7 +44,8 @@ import {
   Swords,
   Trophy,
   Sparkles,
-  Unlock
+  Unlock,
+  PlaySquare
 } from 'lucide-react';
 import { checkDatabaseConnection, DatabaseConnectionStatus } from '../services/supabaseService';
 import {
@@ -141,7 +142,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
     | 'certificates'
     | 'audit'
     | 'import'
-    | 'modules';
+    | 'modules'
+    | 'admins';
 
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
 
@@ -473,10 +475,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
   };
 
   // Filter students
-  const filteredStudents = students.filter(s => {
+  const filteredStudents = (students || []).filter(s => {
+    if (!s) return false;
     const matchesSearch =
-      s.rollNo.toLowerCase().includes(studentSearch.toLowerCase()) ||
-      s.name.toLowerCase().includes(studentSearch.toLowerCase());
+      (s.rollNo || '').toLowerCase().includes(studentSearch.toLowerCase()) ||
+      (s.name || '').toLowerCase().includes(studentSearch.toLowerCase());
     const matchesClass =
       filterClass === 'all'
         ? true
@@ -488,20 +491,23 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
 
   // Students eligible for assignment into a class
   const availableStudentsForAssign = useMemo(() => {
-    return students.filter(s => {
+    return (students || []).filter(s => {
+      if (!s) return false;
       const q = assignStudentSearch.trim().toLowerCase();
-      const matchesSearch = !q || s.rollNo.toLowerCase().includes(q) || s.name.toLowerCase().includes(q);
+      const matchesSearch = !q || (s.rollNo || '').toLowerCase().includes(q) || (s.name || '').toLowerCase().includes(q);
       const matchesUnassigned = assignFilterUnassignedOnly ? !s.classId : true;
       return matchesSearch && matchesUnassigned;
     });
   }, [students, assignStudentSearch, assignFilterUnassignedOnly]);
 
   // Filter violations
-  const filteredViolations = violations.filter(v => {
+  const filteredViolations = (violations || []).filter(v => {
+    if (!v) return false;
+    const searchLower = violationSearch.toLowerCase();
     return (
-      v.studentName?.toLowerCase().includes(violationSearch.toLowerCase()) ||
-      v.rollNo?.toLowerCase().includes(violationSearch.toLowerCase()) ||
-      v.violationType.toLowerCase().includes(violationSearch.toLowerCase())
+      (v.studentName || '').toLowerCase().includes(searchLower) ||
+      (v.rollNo || '').toLowerCase().includes(searchLower) ||
+      (v.violationType || '').toLowerCase().includes(searchLower)
     );
   });
 
@@ -1623,6 +1629,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
             {/* Modules Grid */}
             <div className="grid md:grid-cols-2 gap-4 pt-2">
               {[
+                {
+                  key: 'arena' as const,
+                  name: 'Practice Arena',
+                  desc: 'Core adaptive typing test arena with instant speed calculation and proctoring.',
+                  icon: PlaySquare,
+                  badge: 'Core Arena'
+                },
                 {
                   key: 'multiplayer' as const,
                   name: 'Multiplayer Arena',

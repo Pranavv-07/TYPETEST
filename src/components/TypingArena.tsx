@@ -37,7 +37,9 @@ import {
   Sparkles,
   Zap,
   Gauge,
-  Check
+  Check,
+  Pause,
+  Play
 } from 'lucide-react';
 
 interface TypingArenaProps {
@@ -147,11 +149,14 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
   // Clock & Execution State
   const [testStarted, setTestStarted] = useState<boolean>(false);
   const [testFinished, setTestFinished] = useState<boolean>(false);
+  const [isPaused, setIsPaused] = useState<boolean>(false);
   const [timeLeft, setTimeLeft] = useState<number>(timeOption);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
 
   // Live Metrics & Telemetry
   const startTimeRef = useRef<number | null>(null);
+  const pausedAtRef = useRef<number | null>(null);
+  const totalPausedMsRef = useRef<number>(0);
   const isSubmittingRef = useRef<boolean>(false);
   const lastRecordedSecondRef = useRef<number>(0);
   const lastKeyTimestampRef = useRef<number>(Date.now());
@@ -254,6 +259,9 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
     isSubmittingRef.current = false;
     setTestStarted(false);
     setTestFinished(false);
+    setIsPaused(false);
+    pausedAtRef.current = null;
+    totalPausedMsRef.current = 0;
     setTimeLeft(timeOption);
     setElapsedSeconds(0);
     setInputVal('');
@@ -284,6 +292,24 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
     generateNewTestText();
     setTimeout(() => inputRef.current?.focus(), 50);
   }, [timeOption, generateNewTestText]);
+
+  // Toggle pause during active typing
+  const togglePause = useCallback(() => {
+    if (!testStarted || testFinished) return;
+    setIsPaused(prev => {
+      const next = !prev;
+      if (next) {
+        pausedAtRef.current = Date.now();
+      } else {
+        if (pausedAtRef.current) {
+          totalPausedMsRef.current += (Date.now() - pausedAtRef.current);
+          pausedAtRef.current = null;
+        }
+        setTimeout(() => inputRef.current?.focus(), 50);
+      }
+      return next;
+    });
+  }, [testStarted, testFinished]);
 
   useEffect(() => {
     resetTest();
@@ -373,11 +399,12 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
 
   // Timestamp-based live timer loop
   useEffect(() => {
-    if (!testStarted || testFinished) return;
+    if (!testStarted || testFinished || isPaused) return;
 
     const interval = setInterval(() => {
       const now = Date.now();
-      const elapsed = Math.max(0, (now - (startTimeRef.current || now)) / 1000);
+      const effectiveStart = (startTimeRef.current || now) + totalPausedMsRef.current;
+      const elapsed = Math.max(0, (now - effectiveStart) / 1000);
       setElapsedSeconds(elapsed);
 
       // Time-based limit check
@@ -410,9 +437,20 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
     }, 100);
 
     return () => clearInterval(interval);
-  }, [testStarted, testFinished, activeMode, isAssessment, timeOption, finishTest, computeLiveMetrics]);
+  }, [testStarted, testFinished, isPaused, activeMode, isAssessment, timeOption, finishTest, computeLiveMetrics]);
 
-  // Tab + Enter Global/Arena Keyboard Shortcut
+  // Page blur / switch tabs handling: auto-pause in practice mode
+  useEffect(() => {
+    const handleWindowBlur = () => {
+      if (testStarted && !testFinished && !isAssessment && !isPaused) {
+        togglePause();
+      }
+    };
+    window.addEventListener('blur', handleWindowBlur);
+    return () => window.removeEventListener('blur', handleWindowBlur);
+  }, [testStarted, testFinished, isAssessment, isPaused, togglePause]);
+
+  // Tab + Enter Global/Arena Keyboard Shortcut & Esc to Pause
   useEffect(() => {
     const handleGlobalShortcuts = (e: KeyboardEvent) => {
       // Don't trigger if user is actively in a form or input modal outside arena
@@ -421,6 +459,13 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
       const isArenaInput = activeEl === inputRef.current;
 
       if (isInput && !isArenaInput) {
+        return;
+      }
+
+      // ESC to pause/resume
+      if (e.key === 'Escape' && testStarted && !testFinished) {
+        e.preventDefault();
+        togglePause();
         return;
       }
 
@@ -442,10 +487,26 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
 
     window.addEventListener('keydown', handleGlobalShortcuts);
     return () => window.removeEventListener('keydown', handleGlobalShortcuts);
-  }, [resetTest]);
+  }, [testStarted, testFinished, togglePause, resetTest]);
 
   // Keystroke Handler
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') {
+      if (testStarted && !testFinished) {
+        e.preventDefault();
+        togglePause();
+        return;
+      }
+    }
+
+    if (isPaused) {
+      if (e.key === ' ' || e.key === 'Enter') {
+        e.preventDefault();
+        togglePause();
+      }
+      return;
+    }
+
     // Tab key inside arena: prevent default focus navigation and track for Tab + Enter
     if (e.key === 'Tab') {
       e.preventDefault();
@@ -878,11 +939,28 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
                   <span className="text-emerald-400 font-semibold animate-pulse">
                     Start typing to begin test...
                   </span>
+                ) : isPaused ? (
+                  <span className="text-amber-400 font-semibold flex items-center gap-1.5">
+                    <Pause className="w-3.5 h-3.5" /> Session paused — click Resume or press Space to continue
+                  </span>
                 ) : (
                   <span>Space to advance word • Backspace to correct</span>
                 )}
               </div>
               <div className="flex items-center gap-3">
+                {testStarted && !testFinished && (
+                  <button
+                    onClick={togglePause}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      isPaused
+                        ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-md shadow-emerald-500/20'
+                        : 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30'
+                    }`}
+                  >
+                    {isPaused ? <Play className="w-3.5 h-3.5 fill-current" /> : <Pause className="w-3.5 h-3.5" />}
+                    <span>{isPaused ? 'Resume' : 'Pause (Esc)'}</span>
+                  </button>
+                )}
                 <span className="text-[11px] text-slate-500 hidden sm:inline">
                   <kbd className="px-1.5 py-0.5 rounded bg-slate-950 border border-slate-700 text-slate-400 text-[10px]">tab</kbd> + <kbd className="px-1.5 py-0.5 rounded bg-slate-950 border border-slate-700 text-slate-400 text-[10px]">enter</kbd> to restart
                 </span>
@@ -895,6 +973,35 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
                 </button>
               </div>
             </div>
+
+            {/* In-Session Pause Modal Overlay */}
+            {isPaused && (
+              <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-md rounded-3xl flex flex-col items-center justify-center z-30 p-6 animate-in fade-in">
+                <div className="w-16 h-16 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-4 shadow-xl">
+                  <Pause className="w-8 h-8" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-100">Practice Session Paused</h3>
+                <p className="text-xs text-slate-400 mt-1 mb-6 text-center max-w-sm">
+                  The session timer is frozen. Click Resume or press <kbd className="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-200 font-mono text-[11px]">Esc</kbd> / <kbd className="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-200 font-mono text-[11px]">Space</kbd> to continue typing.
+                </p>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={togglePause}
+                    className="px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center gap-2 transition-all shadow-lg shadow-emerald-500/20 cursor-pointer"
+                  >
+                    <Play className="w-4 h-4 fill-current" />
+                    <span>Resume Practice</span>
+                  </button>
+                  <button
+                    onClick={resetTest}
+                    className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs border border-slate-700 flex items-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    <span>Restart Test</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="w-full pt-2">

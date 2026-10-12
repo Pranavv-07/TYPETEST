@@ -26,6 +26,8 @@ export interface Batch {
   name: string;
   batchYear: string;
   academicYear: string;
+  startYear?: number | string;
+  endYear?: number | string;
   departmentId?: string;
   startDate?: string;
   endDate?: string;
@@ -134,6 +136,7 @@ export interface ViolationRecord {
   testTitle?: string;
   violationType: 'tab_switch' | 'window_blur' | 'visibility_change' | 'paste_attempt' | 'copy_attempt' | 'cut_attempt' | 'fullscreen_exit' | 'unusual_speed' | 'other';
   timestamp: string;
+  recordedAt?: string;
   metadata?: Record<string, any>;
 }
 
@@ -160,27 +163,33 @@ export interface TypingSubmission {
   id: string;
   testId: string;
   testTitle: string;
-  testCategory: TestCategory;
+  testCategory?: TestCategory;
   language?: ProgrammingLanguage;
   studentId: string;
   studentName: string;
+  studentUsername?: string;
   rollNo: string;
-  classId: string;
-  className: string;
-  wpm: number;
-  rawWpm: number;
+  classId?: string;
+  className?: string;
+  wpm?: number;
+  rawWpm?: number;
+  grossWpm?: number;
   netWpm: number;
   accuracy: number;
-  errors: number;
+  errors?: number;
+  errorCount?: number;
   backspaces?: number;
   totalKeystrokes?: number;
-  totalChars: number;
-  correctChars: number;
-  timeTaken: number; // seconds
-  proctorBlurFlags: number; // tab switches or window unfocused
+  totalChars?: number;
+  characterCount?: number;
+  correctChars?: number;
+  timeTaken?: number; // seconds
+  timeSpentSeconds?: number;
+  proctorBlurFlags?: number; // tab switches or window unfocused
   passed: boolean;
   history: SubmissionHistoryPoint[];
   timestamp: string;
+  isPractice?: boolean;
   status?: 'in_progress' | 'submitted' | 'abandoned' | 'disqualified' | 'reset';
 }
 
@@ -374,6 +383,7 @@ export interface AcademyLesson {
 
 export interface AcademyLevel {
   id: number;
+  order?: number;
   title: string;
   tagline: string;
   description: string;
@@ -430,6 +440,7 @@ export interface StudentLessonProgress {
 
 export interface StudentAcademyProfile {
   studentId: string;
+  classId?: string;
   curriculumId: string;
   currentLevelId: number;
   currentLessonId: string;

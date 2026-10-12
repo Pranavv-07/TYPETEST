@@ -246,18 +246,20 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
   // Monitoring Rows
   const activeMonitorTest = tests.find(t => t.id === selectedMonitorTestId);
   const filteredStudents = useMemo(() => {
-    return students.filter(s => {
+    return (students || []).filter(s => {
+      if (!s) return false;
       if (studentClassFilter !== 'all' && s.classId !== studentClassFilter) return false;
       if (studentSearch.trim()) {
         const q = studentSearch.toLowerCase();
-        return s.name.toLowerCase().includes(q) || s.rollNo.toLowerCase().includes(q);
+        return (s.name || '').toLowerCase().includes(q) || (s.rollNo || '').toLowerCase().includes(q);
       }
       return true;
     });
   }, [students, studentClassFilter, studentSearch]);
 
   const filteredCertificates = useMemo(() => {
-    return certificates.filter(cert => {
+    return (certificates || []).filter(cert => {
+      if (!cert) return false;
       if (certStatusFilter !== 'all' && (cert.status || 'valid') !== certStatusFilter) return false;
       if (certSearchQuery.trim()) {
         const q = certSearchQuery.toLowerCase();
@@ -275,22 +277,25 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
   }, [certificates, certStatusFilter, certSearchQuery]);
 
   const monitoringRows = useMemo(() => {
-    let targetStudents = students;
+    let targetStudents = (students || []).filter(Boolean);
     if (activeMonitorTest) {
       if (activeMonitorTest.assignedClassIds && activeMonitorTest.assignedClassIds.length > 0) {
-        targetStudents = students.filter(
+        targetStudents = targetStudents.filter(
           s => s.classId && activeMonitorTest.assignedClassIds.includes(s.classId)
         );
       }
     }
 
+    const safeSubmissions = (submissions || []).filter(Boolean);
+
     return targetStudents.map(std => {
-      const studentSub = submissions.find(
+      const stdRollUpper = (std.rollNo || '').toUpperCase();
+      const studentSub = safeSubmissions.find(
         s =>
           (selectedMonitorTestId === 'all' || s.testId === selectedMonitorTestId) &&
           (s.studentId === std.id ||
-            s.rollNo?.toUpperCase() === std.rollNo.toUpperCase() ||
-            s.studentUsername?.toUpperCase() === std.rollNo.toUpperCase())
+            (stdRollUpper && s.rollNo?.toUpperCase() === stdRollUpper) ||
+            (stdRollUpper && s.studentUsername?.toUpperCase() === stdRollUpper))
       );
       return {
         student: std,

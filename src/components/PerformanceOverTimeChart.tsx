@@ -25,11 +25,12 @@ export const PerformanceOverTimeChart: React.FC<PerformanceOverTimeChartProps> =
 
   // Sort chronologically (oldest to newest) for a proper time-series curve
   const chartData = useMemo(() => {
-    if (!submissions || submissions.length === 0) return [];
+    const validSubs = (submissions || []).filter(Boolean);
+    if (validSubs.length === 0) return [];
 
-    const sorted = [...submissions].sort((a, b) => {
-      const timeA = new Date(a.timestamp || 0).getTime();
-      const timeB = new Date(b.timestamp || 0).getTime();
+    const sorted = [...validSubs].sort((a, b) => {
+      const timeA = new Date(a.timestamp || 0).getTime() || 0;
+      const timeB = new Date(b.timestamp || 0).getTime() || 0;
       return timeA - timeB;
     });
 
@@ -42,27 +43,32 @@ export const PerformanceOverTimeChart: React.FC<PerformanceOverTimeChartProps> =
 
     return sliced.map((sub, index) => {
       const d = sub.timestamp ? new Date(sub.timestamp) : new Date();
-      const formattedDate = d.toLocaleDateString(undefined, {
+      const safeDate = isNaN(d.getTime()) ? new Date() : d;
+      const formattedDate = safeDate.toLocaleDateString(undefined, {
         month: 'short',
         day: 'numeric'
       });
-      const formattedTime = d.toLocaleTimeString(undefined, {
+      const formattedTime = safeDate.toLocaleTimeString(undefined, {
         hour: '2-digit',
         minute: '2-digit'
       });
+
+      const netWpm = Number(sub.netWpm) || 0;
+      const rawWpm = Number(sub.rawWpm) || netWpm || 0;
+      const accuracy = typeof sub.accuracy === 'number' && !isNaN(sub.accuracy) ? sub.accuracy : 100;
 
       return {
         id: sub.id || `sub-${index}`,
         attemptIndex: index + 1,
         dateLabel: `${formattedDate} ${formattedTime}`,
         shortLabel: `#${index + 1} (${formattedDate})`,
-        netWpm: Number(sub.netWpm) || 0,
-        rawWpm: Number(sub.rawWpm) || Number(sub.netWpm) || 0,
-        accuracy: Number(sub.accuracy) || 100,
-        errors: sub.errors || 0,
+        netWpm,
+        rawWpm,
+        accuracy,
+        errors: sub.errorCount ?? sub.errors ?? 0,
         testTitle: sub.testTitle || 'Typing Assessment',
         isPractice: sub.isPractice || false,
-        timeTaken: sub.timeTaken || 60
+        timeTaken: sub.timeSpentSeconds || sub.timeTaken || 60
       };
     });
   }, [submissions, filterRange]);
@@ -72,11 +78,11 @@ export const PerformanceOverTimeChart: React.FC<PerformanceOverTimeChartProps> =
     if (chartData.length === 0) {
       return { peakWpm: 0, avgWpm: 0, avgAccuracy: 0, progressDiff: 0 };
     }
-    const wpms = chartData.map(d => d.netWpm);
-    const accs = chartData.map(d => d.accuracy);
-    const peakWpm = Math.max(...wpms);
-    const avgWpm = Math.round(wpms.reduce((a, b) => a + b, 0) / wpms.length);
-    const avgAccuracy = Math.round(accs.reduce((a, b) => a + b, 0) / accs.length);
+    const wpms = chartData.map(d => d.netWpm).filter(n => typeof n === 'number' && !isNaN(n));
+    const accs = chartData.map(d => d.accuracy).filter(n => typeof n === 'number' && !isNaN(n));
+    const peakWpm = wpms.length > 0 ? Math.max(0, ...wpms) : 0;
+    const avgWpm = wpms.length > 0 ? Math.round(wpms.reduce((a, b) => a + b, 0) / wpms.length) : 0;
+    const avgAccuracy = accs.length > 0 ? Math.round(accs.reduce((a, b) => a + b, 0) / accs.length) : 100;
 
     const firstWpm = chartData[0]?.netWpm || 0;
     const latestWpm = chartData[chartData.length - 1]?.netWpm || 0;
@@ -86,13 +92,13 @@ export const PerformanceOverTimeChart: React.FC<PerformanceOverTimeChartProps> =
   }, [chartData]);
 
   // Custom Recharts Tooltip
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length && payload[0]?.payload) {
       const data = payload[0].payload;
       return (
         <div className="bg-slate-950/95 border border-slate-700/80 rounded-xl p-3.5 shadow-2xl backdrop-blur font-mono text-xs space-y-2 z-50">
           <div className="border-b border-slate-800 pb-1.5 flex items-center justify-between gap-3">
-            <span className="font-bold text-slate-200">{data.testTitle}</span>
+            <span className="font-bold text-slate-200">{data.testTitle || 'Assessment'}</span>
             <span className="text-[10px] text-slate-400">{data.dateLabel}</span>
           </div>
           <div className="grid grid-cols-2 gap-2 text-slate-300">
@@ -218,7 +224,10 @@ export const PerformanceOverTimeChart: React.FC<PerformanceOverTimeChartProps> =
                 tick={{ fill: '#38bdf8', fontSize: 11, fontFamily: 'monospace' }}
                 tickLine={false}
                 axisLine={false}
-                domain={[0, (dataMax: number) => Math.max(80, Math.ceil(dataMax * 1.15))]}
+                domain={[0, (dataMax: number) => {
+                  const safeMax = isFinite(dataMax) && dataMax > 0 ? dataMax : 80;
+                  return Math.max(80, Math.ceil(safeMax * 1.15));
+                }]}
               />
               {/* Right Y Axis: Accuracy (%) */}
               <YAxis

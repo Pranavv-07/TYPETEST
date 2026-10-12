@@ -1,5 +1,5 @@
 import { useServerTime } from "../hooks/useServerTime";
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { TypingTest, StudentCertificate } from '../types';
 import { CertificateModal } from './CertificateModal';
@@ -42,7 +42,10 @@ import {
   Hand
 } from 'lucide-react';
 
+import { ErrorBoundary } from './ErrorBoundary';
+
 interface StudentPortalProps {
+  initialTab?: 'dashboard' | 'achievements' | 'biometrics' | 'assigned' | 'leaderboard' | 'history' | 'certificates';
   onStartAssessment: (test: TypingTest) => void;
   onOpenPractice: () => void;
   onOpenMultiplayer?: () => void;
@@ -51,6 +54,7 @@ interface StudentPortalProps {
 }
 
 export const StudentPortal: React.FC<StudentPortalProps> = ({
+  initialTab,
   onStartAssessment,
   onOpenPractice,
   onOpenMultiplayer,
@@ -58,10 +62,17 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
   onOpenVerification
 }) => {
   const { currentUser, classes, tests, submissions, certificates } = useApp();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'achievements' | 'biometrics' | 'assigned' | 'leaderboard' | 'history' | 'certificates'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'achievements' | 'biometrics' | 'assigned' | 'leaderboard' | 'history' | 'certificates'>(initialTab || 'dashboard');
   const [assignedSubFilter, setAssignedSubFilter] = useState<'all' | 'active' | 'upcoming' | 'completed' | 'expired'>('all');
   const [selectedCertificate, setSelectedCertificate] = useState<StudentCertificate | null>(null);
   const [selectedLeaderboardTest, setSelectedLeaderboardTest] = useState<TypingTest | null>(null);
+
+  // Sync initialTab when prop changes
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
 
   // Enrolled class
   const studentClass = classes.find(c => c.id === currentUser?.classId) || classes[0];
@@ -71,7 +82,11 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
 
   useEffect(() => {
     const handleSync = () => {
-      setAcademyAssignmentsList(getAcademyAssignments());
+      try {
+        setAcademyAssignmentsList(getAcademyAssignments());
+      } catch (e) {
+        console.error('Error syncing academy assignments in StudentPortal:', e);
+      }
     };
     window.addEventListener('storage', handleSync);
     window.addEventListener('typetest_academy_change', handleSync);
@@ -83,10 +98,11 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
   }, []);
 
   const activeAcademyAssignments = useMemo(() => {
-    const list = academyAssignmentsList.filter(a => a.status === 'active' || !a.status);
+    const list = (academyAssignmentsList || []).filter(a => a && (a.status === 'active' || !a.status));
     if (!currentUser) return list;
     const studentClassId = currentUser.classId || '';
     return list.filter(a => {
+      if (!a) return false;
       const assignClass = (a.classId || '').trim().toLowerCase();
       const assignClassName = (a.className || '').trim().toLowerCase();
       const isGlobal =
@@ -105,48 +121,70 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
 
   // Filter assigned tests:
   // Strictly tests assigned to this student specifically OR their enrolled class OR all classes
-  const visibleAssignedTests = tests.filter(t => {
-    if (!currentUser) return false;
+  const visibleAssignedTests = useMemo(() => {
+    if (!tests || !Array.isArray(tests)) return [];
 
-    if (t.assignedStudentIds && t.assignedStudentIds.includes(currentUser.id)) {
-      return true;
-    }
+    return tests.filter(t => {
+      if (!t) return false;
+      if (!currentUser) return true; // Show preview if in public mode
 
-    if (t.assignedClassIds && t.assignedClassIds.length > 0) {
-      if (t.assignedClassIds.includes('all')) return true;
-      if (currentUser?.classId && t.assignedClassIds.includes(currentUser.classId)) return true;
-      if (studentClass && t.assignedClassIds.includes(studentClass.id)) return true;
-    }
+      // If user is a trainer or admin inspecting student view, show all tests
+      if (currentUser.role === 'trainer' || currentUser.role === 'admin') {
+        return true;
+      }
 
-    return false;
-  });
+      if (Array.isArray(t.assignedStudentIds) && currentUser.id && t.assignedStudentIds.includes(currentUser.id)) {
+        return true;
+      }
+
+      if (Array.isArray(t.assignedClassIds) && t.assignedClassIds.length > 0) {
+        if (t.assignedClassIds.includes('all')) return true;
+        if (currentUser.classId && t.assignedClassIds.includes(currentUser.classId)) return true;
+        if (studentClass && t.assignedClassIds.includes(studentClass.id)) return true;
+      }
+
+      return false;
+    });
+  }, [tests, currentUser, studentClass]);
 
   // Filter submissions by this student
-  const studentSubmissions = submissions.filter(
-    s =>
-      s.studentId === currentUser?.id ||
-      (currentUser?.rollNo && s.rollNo && s.rollNo.trim().toUpperCase() === currentUser.rollNo.trim().toUpperCase()) ||
-      (currentUser?.username && s.rollNo && s.rollNo.trim().toUpperCase() === currentUser.username.trim().toUpperCase()) ||
-      (currentUser?.name && s.studentName && s.studentName.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
-  );
+  const studentSubmissions = useMemo(() => {
+    if (!submissions || !Array.isArray(submissions)) return [];
+    if (!currentUser) return [];
+
+    return submissions.filter(
+      s =>
+        s &&
+        (s.studentId === currentUser.id ||
+          (currentUser.rollNo && s.rollNo && s.rollNo.trim().toUpperCase() === currentUser.rollNo.trim().toUpperCase()) ||
+          (currentUser.username && s.rollNo && s.rollNo.trim().toUpperCase() === currentUser.username.trim().toUpperCase()) ||
+          (currentUser.name && s.studentName && s.studentName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()))
+    );
+  }, [submissions, currentUser]);
 
   // Filter certificates for this student
-  const studentCertificates = certificates.filter(
-    c =>
-      c.studentId === currentUser?.id ||
-      (currentUser?.rollNo && c.rollNo && c.rollNo.trim().toUpperCase() === currentUser.rollNo.trim().toUpperCase()) ||
-      (currentUser?.username && c.rollNo && c.rollNo.trim().toUpperCase() === currentUser.username.trim().toUpperCase()) ||
-      (currentUser?.name && c.studentName && c.studentName.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
-  );
+  const studentCertificates = useMemo(() => {
+    if (!certificates || !Array.isArray(certificates)) return [];
+    if (!currentUser) return [];
+
+    return certificates.filter(
+      c =>
+        c &&
+        (c.studentId === currentUser.id ||
+          (currentUser.rollNo && c.rollNo && c.rollNo.trim().toUpperCase() === currentUser.rollNo.trim().toUpperCase()) ||
+          (currentUser.username && c.rollNo && c.rollNo.trim().toUpperCase() === currentUser.username.trim().toUpperCase()) ||
+          (currentUser.name && c.studentName && c.studentName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()))
+    );
+  }, [certificates, currentUser]);
 
   // Performance calculations
   const bestWpm = studentSubmissions.length > 0
-    ? Math.max(...studentSubmissions.map(s => s.netWpm))
+    ? Math.max(0, ...studentSubmissions.map(s => Number(s.netWpm) || 0))
     : 0;
 
   const avgAccuracy = studentSubmissions.length > 0
     ? Math.round(
-        (studentSubmissions.reduce((acc, s) => acc + s.accuracy, 0) / studentSubmissions.length) * 10
+        (studentSubmissions.reduce((acc, s) => acc + (Number(s.accuracy) || 0), 0) / studentSubmissions.length) * 10
       ) / 10
     : 100;
 
@@ -435,7 +473,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
           const isUpcoming = Boolean(test.startAt && new Date(test.startAt).getTime() > now.getTime());
           const isExpired = Boolean(test.endAt && new Date(test.endAt).getTime() < now.getTime());
           const canStart = !isUpcoming && !isExpired && (!isSingleAttempt || !hasCompleted);
-          const wordCount = (test.content.match(/\s*\S+/g) || []).length;
+          const wordCount = ((test.content || '').match(/\s*\S+/g) || []).length;
 
           let statusCategory: 'active' | 'upcoming' | 'completed' | 'expired' = 'active';
           if (hasCompleted) statusCategory = 'completed';
@@ -466,6 +504,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
         });
 
         return (
+          <ErrorBoundary fallbackTitle="Unable to load Assigned Tests">
           <div className="space-y-4">
             <div className="p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-2xl text-xs text-slate-300 flex items-start gap-3">
               <GraduationCap className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
@@ -487,10 +526,10 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
                     </span>
                   </div>
                   <h3 className="text-base font-black text-slate-100">
-                    {activeAcademyAssignments[0].title}
+                    {activeAcademyAssignments[0]?.title || 'Touch Typing Academy Track'}
                   </h3>
                   <p className="text-xs text-slate-300">
-                    Cohort Target: <strong className="text-slate-100">{activeAcademyAssignments[0].className}</strong> • Levels: <strong className="text-emerald-400">{activeAcademyAssignments[0].levelIds?.join(', ') || '1 to 7'}</strong> • Passing Criteria: <strong className="text-emerald-400">{activeAcademyAssignments[0].minAccuracy || 95}% Min Accuracy</strong>
+                    Cohort Target: <strong className="text-slate-100">{activeAcademyAssignments[0]?.className || 'All Cohorts'}</strong> • Levels: <strong className="text-emerald-400">{activeAcademyAssignments[0]?.levelIds?.join(', ') || '1 to 7'}</strong> • Passing Criteria: <strong className="text-emerald-400">{activeAcademyAssignments[0]?.minAccuracy || 95}% Min Accuracy</strong>
                   </p>
                 </div>
                 <button
@@ -704,11 +743,13 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
               </div>
             )}
           </div>
+          </ErrorBoundary>
         );
       })()}
 
       {/* TAB 2: MY SUBMISSION HISTORY */}
       {activeTab === 'history' && (
+        <ErrorBoundary fallbackTitle="Unable to load Submission History">
         <div className="space-y-6">
           <PerformanceOverTimeChart submissions={studentSubmissions} />
 
@@ -742,15 +783,15 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 font-sans">
                     {studentSubmissions.map(sub => (
-                      <tr key={sub.id} className="hover:bg-slate-800/40 transition-colors">
-                        <td className="py-3 px-4 font-semibold text-slate-200">{sub.testTitle}</td>
+                      <tr key={sub.id || Math.random().toString()} className="hover:bg-slate-800/40 transition-colors">
+                        <td className="py-3 px-4 font-semibold text-slate-200">{sub.testTitle || 'Typing Assessment'}</td>
                         <td className="py-3 px-4 text-right font-mono font-bold text-emerald-400 text-sm">
-                          {sub.netWpm}
+                          {Number(sub.netWpm) || 0}
                         </td>
-                        <td className="py-3 px-4 text-right font-mono text-slate-400">{sub.grossWpm}</td>
-                        <td className="py-3 px-4 text-right font-mono text-amber-400">{sub.accuracy}%</td>
-                        <td className="py-3 px-4 text-right font-mono text-slate-400">{sub.errorCount}</td>
-                        <td className="py-3 px-4 text-right font-mono text-slate-400">{sub.timeSpentSeconds || 60}s</td>
+                        <td className="py-3 px-4 text-right font-mono text-slate-400">{Number(sub.grossWpm) || 0}</td>
+                        <td className="py-3 px-4 text-right font-mono text-amber-400">{Number(sub.accuracy) || 0}%</td>
+                        <td className="py-3 px-4 text-right font-mono text-slate-400">{sub.errorCount ?? sub.errors ?? 0}</td>
+                        <td className="py-3 px-4 text-right font-mono text-slate-400">{sub.timeSpentSeconds || sub.timeTaken || 60}s</td>
                         <td className="py-3 px-4 text-right font-mono text-slate-400 text-[11px]">
                           {formatISTDateTime(sub.timestamp)}
                         </td>
@@ -767,6 +808,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
             )}
           </div>
         </div>
+        </ErrorBoundary>
       )}
 
       {/* TAB 3: MY CERTIFICATES */}

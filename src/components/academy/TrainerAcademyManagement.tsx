@@ -328,7 +328,7 @@ export const TrainerAcademyManagement: React.FC<TrainerAcademyManagementProps> =
                 <div className="flex justify-between items-center">
                   <div>
                     <span className="text-[10px] font-mono uppercase text-emerald-400 font-bold">
-                      Level {lvl.order}
+                      Level {lvl.order || lvl.id}
                     </span>
                     <h3 className="font-bold text-slate-100 text-sm">{lvl.title}</h3>
                   </div>

@@ -32,6 +32,7 @@ interface ExcelStudentImportModalProps {
   onClose: () => void;
   allowedClasses?: ClassRoom[];
   defaultClassId?: string;
+  role?: string;
   onSuccess?: (summary: StudentImportSummary) => void;
 }
 

@@ -23,6 +23,12 @@ export interface AchievementBadge {
   unlockedAt?: string;
   levelNumber?: number;
   levelId?: number;
+  rarity?: string;
+  isGrand?: boolean;
+  bannerColor?: string;
+  certificationTitle?: string;
+  pedestalType?: string;
+  credentialSubtext?: string;
 }
 
 export type CertificationBadge = AchievementBadge;

@@ -17,6 +17,8 @@ import { ModuleUnderDevelopment } from './components/ModuleUnderDevelopment';
 import { DeveloperFooter } from './components/DeveloperFooter';
 import { isAcademyGloballyOpen } from './services/academyService';
 import { TypingTest } from './types';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { GraduationCap, ShieldAlert } from 'lucide-react';
 
 const MainLayout: React.FC = () => {
   const { currentUser, tests, moduleControls, toggleModule, isModuleDisabled } = useApp();
@@ -178,11 +180,24 @@ const MainLayout: React.FC = () => {
         )}
 
         {currentView === 'arena' && (
-          <TypingArena
-            key={activeAssessment ? activeAssessment.id : 'arena'}
-            initialTest={activeAssessment}
-            onExitProctored={activeAssessment ? handleExitAssessment : undefined}
-          />
+          isModuleDisabled('arena') ? (
+            <ModuleUnderDevelopment
+              moduleName="Practice Arena"
+              customMessage={moduleControls.arena?.statusMessage}
+              onBackToArena={() => setCurrentView('tests')}
+              onGoToDashboard={currentUser?.role === 'student' ? () => setCurrentView('student') : undefined}
+              isAdmin={currentUser?.role === 'admin'}
+              onAdminEnable={() => toggleModule('arena', false)}
+            />
+          ) : (
+            <ErrorBoundary fallbackTitle="Unable to load Practice Arena">
+              <TypingArena
+                key={activeAssessment ? activeAssessment.id : 'arena'}
+                initialTest={activeAssessment}
+                onExitProctored={activeAssessment ? handleExitAssessment : undefined}
+              />
+            </ErrorBoundary>
+          )
         )}
 
         {currentView === 'tests' && (
@@ -196,7 +211,9 @@ const MainLayout: React.FC = () => {
               onAdminEnable={() => toggleModule('tests', false)}
             />
           ) : (
-            <ExploreTestsPage onLaunchTest={handleLaunchAssessment} />
+            <ErrorBoundary fallbackTitle="Unable to load Tests Directory">
+              <ExploreTestsPage onLaunchTest={handleLaunchAssessment} />
+            </ErrorBoundary>
           )
         )}
 
@@ -211,10 +228,12 @@ const MainLayout: React.FC = () => {
               onAdminEnable={() => toggleModule('verify', false)}
             />
           ) : (
-            <PublicCertificateVerificationPage
-              initialCertificateId={activeCertId}
-              onBackToApp={() => setCurrentView('arena')}
-            />
+            <ErrorBoundary fallbackTitle="Unable to load Certificate Verification">
+              <PublicCertificateVerificationPage
+                initialCertificateId={activeCertId}
+                onBackToApp={() => setCurrentView('arena')}
+              />
+            </ErrorBoundary>
           )
         )}
 
@@ -229,35 +248,93 @@ const MainLayout: React.FC = () => {
               onAdminEnable={() => toggleModule('leaderboard', false)}
             />
           ) : (
-            <PublicLeaderboardPage
-              testId={tests[0]?.id || 'test-code-1'}
-              onBackToApp={() => setCurrentView('arena')}
-            />
+            <ErrorBoundary fallbackTitle="Unable to load Public Leaderboard">
+              <PublicLeaderboardPage
+                testId={tests[0]?.id || 'test-code-1'}
+                onBackToApp={() => setCurrentView('arena')}
+              />
+            </ErrorBoundary>
           )
         )}
 
-        {currentView === 'trainer' && currentUser?.role === 'trainer' && (
-          <TrainerDashboard
-            onLaunchTest={handleLaunchAssessment}
-            onOpenVerification={handleOpenVerification}
-          />
+        {currentView === 'trainer' && (
+          currentUser?.role === 'trainer' ? (
+            <ErrorBoundary fallbackTitle="Unable to load Trainer Portal">
+              <TrainerDashboard
+                onLaunchTest={handleLaunchAssessment}
+                onOpenVerification={handleOpenVerification}
+              />
+            </ErrorBoundary>
+          ) : (
+            <div className="max-w-md mx-auto mt-12 bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center space-y-4 shadow-2xl">
+              <div className="w-16 h-16 mx-auto rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                <ShieldAlert className="w-8 h-8" />
+              </div>
+              <h2 className="text-xl font-bold text-slate-100">Trainer Privileges Required</h2>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                You must be logged in as an authorized faculty trainer to access institutional cohort controls, create assignments, and view classroom analytics.
+              </p>
+              <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+                <button
+                  onClick={() => setCurrentView('login')}
+                  className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-all cursor-pointer shadow-md shadow-amber-500/20"
+                >
+                  Log In as Trainer
+                </button>
+                <button
+                  onClick={() => setCurrentView('arena')}
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs border border-slate-700 transition-colors cursor-pointer"
+                >
+                  Return to Arena
+                </button>
+              </div>
+            </div>
+          )
         )}
 
-        {currentView === 'student' && currentUser?.role === 'student' && (
-          <StudentPortal
-            onStartAssessment={handleLaunchAssessment}
-            onOpenPractice={() => {
-              setActiveAssessment(null);
-              setCurrentView('arena');
-            }}
-            onOpenMultiplayer={() => setCurrentView('multiplayer')}
-            onOpenAcademy={() => setCurrentView('academy')}
-            onOpenVerification={handleOpenVerification}
-          />
+        {currentView === 'student' && (
+          !currentUser ? (
+            <div className="max-w-md mx-auto mt-12 bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center space-y-4 shadow-2xl">
+              <div className="w-16 h-16 mx-auto rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                <GraduationCap className="w-8 h-8" />
+              </div>
+              <h2 className="text-xl font-bold text-slate-100">Student Portal Access</h2>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Log in with your institutional student credentials or roll number to access your assigned tests, milestone certificates, and verified history.
+              </p>
+              <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+                <button
+                  onClick={() => setCurrentView('login')}
+                  className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-all shadow-md shadow-emerald-500/20 cursor-pointer"
+                >
+                  Log In to Student Account
+                </button>
+                <button
+                  onClick={() => setCurrentView('arena')}
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs border border-slate-700 transition-colors cursor-pointer"
+                >
+                  Practice Arena
+                </button>
+              </div>
+            </div>
+          ) : (
+            <ErrorBoundary fallbackTitle="Unable to load Student Portal">
+              <StudentPortal
+                onStartAssessment={handleLaunchAssessment}
+                onOpenPractice={() => {
+                  setActiveAssessment(null);
+                  setCurrentView('arena');
+                }}
+                onOpenMultiplayer={() => setCurrentView('multiplayer')}
+                onOpenAcademy={() => setCurrentView('academy')}
+                onOpenVerification={handleOpenVerification}
+              />
+            </ErrorBoundary>
+          )
         )}
 
         {currentView === 'academy' && (
-          isModuleDisabled('academy') && !isAcademyGloballyOpen() ? (
+          isModuleDisabled('academy') ? (
             <ModuleUnderDevelopment
               moduleName="Touch Typing Academy"
               customMessage={moduleControls.academy?.statusMessage}
@@ -267,20 +344,22 @@ const MainLayout: React.FC = () => {
               onAdminEnable={() => toggleModule('academy', false)}
             />
           ) : (
-            <AcademyDashboard
-              currentUser={currentUser}
-              onExit={() =>
-                setCurrentView(
-                  currentUser
-                    ? currentUser.role === 'trainer'
-                      ? 'trainer'
-                      : currentUser.role === 'admin'
-                      ? 'admin'
-                      : 'student'
-                    : 'arena'
-                )
-              }
-            />
+            <ErrorBoundary fallbackTitle="Unable to load Typing Academy">
+              <AcademyDashboard
+                currentUser={currentUser}
+                onExit={() =>
+                  setCurrentView(
+                    currentUser
+                      ? currentUser.role === 'trainer'
+                        ? 'trainer'
+                        : currentUser.role === 'admin'
+                        ? 'admin'
+                        : 'student'
+                      : 'arena'
+                  )
+                }
+              />
+            </ErrorBoundary>
           )
         )}
 
@@ -295,24 +374,54 @@ const MainLayout: React.FC = () => {
               onAdminEnable={() => toggleModule('multiplayer', false)}
             />
           ) : (
-            <MultiplayerArena
-              onExit={() =>
-                setCurrentView(
-                  currentUser
-                    ? currentUser.role === 'trainer'
-                      ? 'trainer'
-                      : currentUser.role === 'admin'
-                      ? 'admin'
-                      : 'student'
-                    : 'arena'
-                )
-              }
-            />
+            <ErrorBoundary fallbackTitle="Unable to load Multiplayer Arena">
+              <MultiplayerArena
+                onExit={() =>
+                  setCurrentView(
+                    currentUser
+                      ? currentUser.role === 'trainer'
+                        ? 'trainer'
+                        : currentUser.role === 'admin'
+                        ? 'admin'
+                        : 'student'
+                      : 'arena'
+                  )
+                }
+              />
+            </ErrorBoundary>
           )
         )}
 
-        {currentView === 'admin' && currentUser?.role === 'admin' && (
-          <AdminPortal onOpenVerification={handleOpenVerification} />
+        {currentView === 'admin' && (
+          currentUser?.role === 'admin' ? (
+            <ErrorBoundary fallbackTitle="Unable to load Admin Console">
+              <AdminPortal onOpenVerification={handleOpenVerification} />
+            </ErrorBoundary>
+          ) : (
+            <div className="max-w-md mx-auto mt-12 bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center space-y-4 shadow-2xl">
+              <div className="w-16 h-16 mx-auto rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
+                <ShieldAlert className="w-8 h-8" />
+              </div>
+              <h2 className="text-xl font-bold text-slate-100">Administrator Credentials Required</h2>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Super administrator authentication is required to access system configuration, audit logs, and institutional controls.
+              </p>
+              <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+                <button
+                  onClick={() => setCurrentView('login')}
+                  className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-slate-950 font-bold text-xs transition-all cursor-pointer shadow-md shadow-rose-500/20"
+                >
+                  Log In as Administrator
+                </button>
+                <button
+                  onClick={() => setCurrentView('arena')}
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs border border-slate-700 transition-colors cursor-pointer"
+                >
+                  Return to Arena
+                </button>
+              </div>
+            </div>
+          )
         )}
       </main>
 
