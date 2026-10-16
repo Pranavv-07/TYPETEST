@@ -45,7 +45,8 @@ import {
   Trophy,
   Sparkles,
   Unlock,
-  PlaySquare
+  PlaySquare,
+  BarChart3
 } from 'lucide-react';
 import { checkDatabaseConnection, DatabaseConnectionStatus } from '../services/supabaseService';
 import {
@@ -53,6 +54,7 @@ import {
   setAcademyGloballyOpen,
   saveAcademyAssignment
 } from '../services/academyService';
+import { AdminGoogleAnalytics } from './AdminGoogleAnalytics';
 
 interface AdminPortalProps {
   onOpenVerification?: (certId: string) => void;
@@ -143,6 +145,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
     | 'audit'
     | 'import'
     | 'modules'
+    | 'analytics'
     | 'admins';
 
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
@@ -595,7 +598,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
           { id: 'certificates', label: `Certificates (${certificates.length})`, icon: ShieldCheck },
           { id: 'audit', label: `Audit Logs (${auditLogs.length})`, icon: History },
           { id: 'import', label: 'Bulk Ingest', icon: FileSpreadsheet },
-          { id: 'modules', label: 'Feature Controls', icon: Sliders }
+          { id: 'modules', label: 'Feature Controls', icon: Sliders },
+          { id: 'analytics', label: 'Google Analytics', icon: BarChart3 }
         ].map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -1822,6 +1826,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
             </div>
           </div>
         </div>
+      )}
+
+      {/* TAB: GOOGLE ANALYTICS */}
+      {activeTab === 'analytics' && (
+        <AdminGoogleAnalytics />
       )}
 
       {/* DEPARTMENT MODAL */}

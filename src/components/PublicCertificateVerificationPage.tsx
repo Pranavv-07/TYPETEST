@@ -3,6 +3,7 @@ import { StudentCertificate } from '../types';
 import { formatISTDate, formatISTDateTime } from '../utils/dateUtils';
 import { QRCodeSVG } from 'qrcode.react';
 import { verifyCertificateDirectlyFromDatabase } from '../services/supabaseService';
+import { trackEvent } from '../services/analyticsService';
 import {
   ShieldCheck,
   Search,
@@ -93,6 +94,12 @@ export const PublicCertificateVerificationPage: React.FC<PublicCertificateVerifi
         setVerifiedCert(result.certificate);
         setDbSource(result.databaseSource);
         setErrorMessage(null);
+        trackEvent('certificate_verified', {
+          certificate_id: result.certificate.id,
+          student_name: result.certificate.studentName,
+          test_title: result.certificate.testTitle || 'Certification',
+          database_source: result.databaseSource
+        }, 'credentialing');
       } else {
         setVerifiedCert(null);
         setDbSource(result.databaseSource);

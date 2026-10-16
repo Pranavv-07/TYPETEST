@@ -32,6 +32,7 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 import confetti from 'canvas-confetti';
 import { soundController } from '../utils/audio';
 import { MechanicalKeyboard } from './MechanicalKeyboard';
+import { trackEvent } from '../services/analyticsService';
 
 const PASSAGES = [
   "The quick brown fox jumps over the lazy dog. Programming is the art of algorithm design and the craft of debugging errant code. Multiplayer typing races are fun and engaging for everyone involved.",
@@ -845,6 +846,12 @@ export const MultiplayerArena: React.FC<{ onExit: () => void }> = ({ onExit }) =
     setMyFinishRank(rank);
 
     sendMyProgress(100, finalWpm, 'finished', finishTimestamp);
+
+    trackEvent('multiplayer_race_finished', {
+      final_wpm: finalWpm,
+      rank,
+      total_players: Object.keys(players).length
+    }, 'multiplayer');
 
     try {
       confetti({

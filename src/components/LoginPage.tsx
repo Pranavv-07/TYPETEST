@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Keyboard, LogIn, Lock, User, AlertCircle, ArrowRight, ShieldCheck, CheckSquare, Square } from 'lucide-react';
+import { trackEvent } from '../services/analyticsService';
 
 interface LoginPageProps {
   onSuccess: (role: 'trainer' | 'student' | 'admin') => void;
@@ -40,6 +41,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSuccess, onContinueAsGue
           localStorage.removeItem('testtype_user_v2');
         }
 
+        trackEvent('user_login', { role }, 'auth');
         onSuccess(role);
       } else {
         setErrorMsg(

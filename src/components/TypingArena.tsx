@@ -8,6 +8,7 @@ import { D3SessionChart } from './D3SessionChart';
 import { D3FingerHeatmap } from './D3FingerHeatmap';
 import { MechanicalKeyboard } from './MechanicalKeyboard';
 import { recordKeystrokeEvent } from '../services/keystrokeAnalyticsService';
+import { trackEvent } from '../services/analyticsService';
 import {
   evaluateTypingSession,
   calculateGrossWpm,
@@ -378,6 +379,17 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
       passed: finalMetrics.accuracy >= (initialTest?.minAccuracy || 90)
     };
 
+    trackEvent('test_completed', {
+      test_title: submissionPayload.testTitle,
+      category: activeMode,
+      net_wpm: finalMetrics.netWpm,
+      gross_wpm: finalMetrics.grossWpm,
+      accuracy: finalMetrics.accuracy,
+      errors: finalMetrics.errors,
+      passed: submissionPayload.passed,
+      is_proctored: Boolean(initialTest)
+    }, 'assessment');
+
     if (attemptIdRef.current) {
       await submitAttempt(attemptIdRef.current, submissionPayload);
     } else {
@@ -533,6 +545,12 @@ export const TypingArena: React.FC<TypingArenaProps> = ({
       if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
         setTestStarted(true);
         startTimeRef.current = Date.now();
+        trackEvent('test_started', {
+          test_title: initialTest?.title || 'Standard Practice Test',
+          mode: activeMode,
+          duration_seconds: timeOption,
+          is_proctored: Boolean(initialTest)
+        }, 'assessment');
       }
     }
 

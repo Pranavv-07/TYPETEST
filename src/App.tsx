@@ -19,6 +19,7 @@ import { isAcademyGloballyOpen } from './services/academyService';
 import { TypingTest } from './types';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { GraduationCap, ShieldAlert } from 'lucide-react';
+import { trackPageView } from './services/analyticsService';
 
 const MainLayout: React.FC = () => {
   const { currentUser, tests, moduleControls, toggleModule, isModuleDisabled } = useApp();
@@ -81,6 +82,11 @@ const MainLayout: React.FC = () => {
       window.removeEventListener('hashchange', handleUrlChange);
     };
   }, []);
+
+  // Track Single Page Application (SPA) view changes to Google Analytics
+  useEffect(() => {
+    trackPageView(currentView);
+  }, [currentView]);
 
   // Synchronize view and enforce strict role-based access control
   useEffect(() => {

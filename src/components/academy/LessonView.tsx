@@ -18,6 +18,7 @@ import {
   getStudentAcademyProfile,
   saveStudentAcademyProfile
 } from '../../services/academyService';
+import { trackEvent } from '../../services/analyticsService';
 import { soundController } from '../../utils/audio';
 import confetti from 'canvas-confetti';
 import {
@@ -341,6 +342,15 @@ export const LessonView: React.FC<LessonViewProps> = ({
 
     setLastAttempt(attempt);
     setIsNewlyMastered(newlyMastered);
+    trackEvent('academy_lesson_completed', {
+      lesson_id: lesson.id,
+      lesson_title: lesson.title,
+      level_id: level.id,
+      wpm: netWpm,
+      accuracy,
+      passed,
+      mastered: passed && isAssessment
+    }, 'academy');
     if (onProfileUpdated) onProfileUpdated(updatedProfile);
     if (onLessonCompleted) onLessonCompleted();
     if (onLessonComplete) onLessonComplete();
