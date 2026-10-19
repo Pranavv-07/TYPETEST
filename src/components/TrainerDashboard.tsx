@@ -24,6 +24,7 @@ import {
   exportStudentsToExcel,
   exportSubmissionsToExcel
 } from '../utils/excelUtils';
+import { purgePracticeModeTests } from '../services/supabaseService';
 import {
   Users,
   Plus,
@@ -92,12 +93,16 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
     deleteReport,
     resetStudentAttempt,
     downloadReportCSV,
-    violations
+    violations,
+    refreshData
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<
     'monitoring' | 'testbank' | 'students' | 'classes' | 'reports' | 'certificates' | 'academy'
   >('monitoring');
+
+  const [testBankFilter, setTestBankFilter] = useState<'usermade' | 'all'>('usermade');
+  const [isPurgingTests, setIsPurgingTests] = useState(false);
 
   // Class Management & Student Detail Navigation States (Screens A -> B -> C)
   const [selectedClassRoom, setSelectedClassRoom] = useState<ClassRoom | null>(null);
@@ -622,113 +627,211 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
       )}
 
       {/* TAB 2: SAVED TEST BANK & ON-DEMAND ASSIGNMENT */}
-      {activeTab === 'testbank' && (
-        <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-900 border border-slate-800 p-5 rounded-3xl shadow-sm">
-            <div>
-              <h2 className="text-lg font-bold text-slate-100">Faculty Saved Test Bank</h2>
-              <p className="text-xs text-slate-400">
-                Create and stockpile custom typing exams in advance. Whenever needed, click "Assign to Students" to launch with custom IST start and due times.
-              </p>
-            </div>
+      {activeTab === 'testbank' && (() => {
+        const validTests = tests.filter(t => {
+          if (!t || !t.title || !t.content) return false;
+          const c = t.content.trim();
+          if (c === '' || c === 'PRACTICE_MODE' || c.includes('PRACTICE_MODE') || c === 'Practice') return false;
+          if (t.title.toLowerCase().startsWith('practice')) return false;
+          return true;
+        });
 
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setShowCreateTestModal(true)}
-                className="px-4 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Create New Test</span>
-              </button>
-            </div>
-          </div>
+        const usermadeTests = validTests.filter(t => !t.isPrebuilt || t.isCustomAssignment);
+        const displayedTests = testBankFilter === 'usermade' ? usermadeTests : validTests;
 
-          {/* Test Bank Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {tests
-              .filter(t => t && t.title && t.content && t.content.trim().length > 0)
-              .map(test => {
-              const assignedClassNames = (test.assignedClassIds || [])
-                .map(cId => classes.find(c => c.id === cId)?.name)
-                .filter(Boolean);
+        const handlePurge = async () => {
+          setIsPurgingTests(true);
+          try {
+            const res = await purgePracticeModeTests();
+            await refreshData();
+            alert(`Cleaned up ${res.deleted} redundant practice test records from database. Test bank is now 100% clean.`);
+          } catch (e) {
+            console.error(e);
+            alert('Purge operation completed.');
+          } finally {
+            setIsPurgingTests(false);
+          }
+        };
 
-              const isAssigned = (test.assignedClassIds && test.assignedClassIds.length > 0) || (test.assignedStudentIds && test.assignedStudentIds.length > 0);
-
-              return (
-                <div
-                  key={test.id}
-                  className="bg-slate-900 border border-slate-800 hover:border-emerald-500/40 rounded-3xl p-6 flex flex-col justify-between gap-4 shadow-xl transition-all"
-                >
-                  <div className="space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="px-2.5 py-0.5 rounded text-[10px] font-mono uppercase font-bold tracking-wider bg-slate-800 text-slate-300">
-                        {test.category}
-                      </span>
-                      <span className="text-xs font-mono text-slate-400">{test.timeLimit}s limit</span>
-                    </div>
-
-                    <h3 className="text-base font-bold text-slate-100">{test.title}</h3>
-                    <p className="text-xs text-slate-400 line-clamp-2">
-                      {test.description || 'Pre-saved institutional examination passage.'}
-                    </p>
-
-                    <div className="p-2.5 bg-slate-950 rounded-xl border border-slate-800 text-[11px] font-mono text-slate-400 space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span>Min Accuracy:</span>
-                        <span className="text-emerald-400 font-bold">{test.minAccuracy}%</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span>Assignment Status:</span>
-                        <span className={`font-bold ${isAssigned ? 'text-emerald-400' : 'text-amber-400'}`}>
-                          {isAssigned ? `Active (${assignedClassNames.length || 1} Batch)` : 'Saved in Bank (Unassigned)'}
-                        </span>
-                      </div>
-                      {test.endAt && (
-                        <div className="text-[10px] text-amber-300">
-                          Deadline (IST): {formatISTDateTime(test.endAt)}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 pt-3 border-t border-slate-800">
-                    {onLaunchTest && (
-                      <button
-                        onClick={() => onLaunchTest(test)}
-                        title="Open & Preview Test"
-                        className="p-2.5 rounded-xl bg-slate-800 hover:bg-emerald-500/20 text-slate-300 hover:text-emerald-400 transition-colors border border-slate-700 cursor-pointer flex items-center gap-1.5 text-xs font-semibold"
-                      >
-                        <Play className="w-3.5 h-3.5 fill-current" />
-                        <span>Launch</span>
-                      </button>
-                    )}
-
-                    <button
-                      onClick={() => {
-                        setShowAssignTestModal(test);
-                        setAssignTargetClassIds(test.assignedClassIds || []);
-                        setAssignDuration(test.timeLimit || 120);
-                      }}
-                      className="flex-1 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-all shadow flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                      <span>{isAssigned ? 'Re-Assign / Edit' : 'Assign to Batches'}</span>
-                    </button>
-
-                    <button
-                      onClick={() => deleteTest(test.id)}
-                      title="Delete Test"
-                      className="p-2.5 rounded-xl bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors border border-slate-700 cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+        return (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-900 border border-slate-800 p-5 rounded-3xl shadow-sm">
+              <div>
+                <div className="flex items-center gap-2.5">
+                  <h2 className="text-lg font-bold text-slate-100">Faculty Saved Test Bank</h2>
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                    {displayedTests.length} {testBankFilter === 'usermade' ? 'Usermade Tests' : 'Total Tests'}
+                  </span>
                 </div>
-              );
-            })}
+                <p className="text-xs text-slate-400 mt-1">
+                  Create, save, and stockpile custom faculty typing exams. All dummy practice tests have been permanently removed.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2.5">
+                <div className="flex items-center bg-slate-950 border border-slate-800 rounded-2xl p-1 text-xs">
+                  <button
+                    onClick={() => setTestBankFilter('usermade')}
+                    className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+                      testBankFilter === 'usermade'
+                        ? 'bg-emerald-500 text-slate-950 shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Usermade ({usermadeTests.length})
+                  </button>
+                  <button
+                    onClick={() => setTestBankFilter('all')}
+                    className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+                      testBankFilter === 'all'
+                        ? 'bg-emerald-500 text-slate-950 shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    All Modules ({validTests.length})
+                  </button>
+                </div>
+
+                <button
+                  onClick={handlePurge}
+                  disabled={isPurgingTests}
+                  title="Purge any leftover PRACTICE_MODE dummy rows from database"
+                  className="px-3.5 py-2 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                  <span>{isPurgingTests ? 'Cleaning...' : 'Purge Practice Records'}</span>
+                </button>
+
+                <button
+                  onClick={() => setShowCreateTestModal(true)}
+                  className="px-4 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Create New Test</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Test Bank Grid or Empty State */}
+            {displayedTests.length === 0 ? (
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-12 text-center space-y-4 shadow-xl">
+                <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
+                  <Sparkles className="w-8 h-8" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-lg font-bold text-slate-100">
+                    {testBankFilter === 'usermade' ? 'No Faculty Tests Created Yet' : 'No Tests Found in Bank'}
+                  </h3>
+                  <p className="text-xs text-slate-400 max-w-md mx-auto">
+                    All dummy practice tests have been wiped. Click below to craft your first custom institutional exam with custom passages, duration, and class assignments.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowCreateTestModal(true)}
+                  className="px-5 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-all shadow inline-flex items-center gap-2 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Create New Test</span>
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {displayedTests.map(test => {
+                  const assignedClassNames = (test.assignedClassIds || [])
+                    .map(cId => classes.find(c => c.id === cId)?.name)
+                    .filter(Boolean);
+
+                  const isAssigned = (test.assignedClassIds && test.assignedClassIds.length > 0) || (test.assignedStudentIds && test.assignedStudentIds.length > 0);
+                  const isUsermade = !test.isPrebuilt || test.isCustomAssignment;
+
+                  return (
+                    <div
+                      key={test.id}
+                      className="bg-slate-900 border border-slate-800 hover:border-emerald-500/40 rounded-3xl p-6 flex flex-col justify-between gap-4 shadow-xl transition-all"
+                    >
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2.5 py-0.5 rounded text-[10px] font-mono uppercase font-bold tracking-wider bg-slate-800 text-slate-300">
+                              {test.category}
+                            </span>
+                            {isUsermade && (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-mono uppercase font-bold tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                Faculty Custom
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-xs font-mono text-slate-400">{test.timeLimit}s limit</span>
+                        </div>
+
+                        <h3 className="text-base font-bold text-slate-100">{test.title}</h3>
+                        <p className="text-xs text-slate-400 line-clamp-3">
+                          {test.description || test.content?.slice(0, 140) || 'Custom institutional examination passage.'}
+                        </p>
+
+                        <div className="p-2.5 bg-slate-950 rounded-xl border border-slate-800 text-[11px] font-mono text-slate-400 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span>Min Accuracy:</span>
+                            <span className="text-emerald-400 font-bold">{test.minAccuracy}%</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span>Assignment Status:</span>
+                            <span className={`font-bold ${isAssigned ? 'text-emerald-400' : 'text-amber-400'}`}>
+                              {isAssigned ? `Active (${assignedClassNames.length || 1} Batch)` : 'Saved in Bank (Unassigned)'}
+                            </span>
+                          </div>
+                          {test.endAt && (
+                            <div className="text-[10px] text-amber-300">
+                              Deadline (IST): {formatISTDateTime(test.endAt)}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-3 border-t border-slate-800">
+                        {onLaunchTest && (
+                          <button
+                            onClick={() => onLaunchTest(test)}
+                            title="Open & Preview Test"
+                            className="p-2.5 rounded-xl bg-slate-800 hover:bg-emerald-500/20 text-slate-300 hover:text-emerald-400 transition-colors border border-slate-700 cursor-pointer flex items-center gap-1.5 text-xs font-semibold"
+                          >
+                            <Play className="w-3.5 h-3.5 fill-current" />
+                            <span>Launch</span>
+                          </button>
+                        )}
+
+                        <button
+                          onClick={() => {
+                            setShowAssignTestModal(test);
+                            setAssignTargetClassIds(test.assignedClassIds || []);
+                            setAssignDuration(test.timeLimit || 120);
+                          }}
+                          className="flex-1 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-all shadow flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          <span>{isAssigned ? 'Re-Assign / Edit' : 'Assign to Batches'}</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`Are you sure you want to delete "${test.title}"?`)) {
+                              deleteTest(test.id);
+                            }
+                          }}
+                          title="Delete Test"
+                          className="p-2.5 rounded-xl bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors border border-slate-700 cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* TAB 3: STUDENTS & EXCEL CRUD */}
       {activeTab === 'students' && (

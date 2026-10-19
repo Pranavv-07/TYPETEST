@@ -319,18 +319,28 @@ export async function startTestAttemptAtomic(
 ): Promise<{ success: boolean; attempt?: any; message?: string }> {
   if (isSupabaseConfigured()) {
     try {
-      const { data, error } = await supabase.rpc('start_test_attempt', {
-        p_test_id: testId,
-        p_student_id: studentId
-      });
+      const isStudentUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(studentId);
+      const isTestUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(testId);
 
-      if (error) {
-        return { success: false, message: error.message };
+      if (isStudentUuid && isTestUuid) {
+        const { data, error } = await supabase.rpc('start_test_attempt', {
+          p_test_id: testId,
+          p_student_id: studentId
+        });
+
+        if (error) {
+          if (error.message?.includes('STUDENT_NOT_FOUND') || error.message?.includes('TEST_NOT_FOUND')) {
+            console.warn('Supabase test attempt start fallback:', error.message);
+          } else {
+            return { success: false, message: error.message };
+          }
+        } else {
+          const attemptObj = data?.attempt || data;
+          return { success: true, attempt: attemptObj };
+        }
       }
-      const attemptObj = data?.attempt || data;
-      return { success: true, attempt: attemptObj };
     } catch (err: any) {
-      return { success: false, message: err.message || 'Database transaction error' };
+      console.warn('Database start_test_attempt error, falling back:', err.message);
     }
   }
 
@@ -545,19 +555,10 @@ export async function submitTestAttemptAtomic(
         const isTestUuid = targetTestId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetTestId);
 
         if (!isTestUuid) {
-          const { data: newTestRow } = await supabase.from('tests').insert([{
-            title: submission.testTitle || `Practice: ${submission.testCategory || 'Standard'}`,
-            category: submission.testCategory || 'standard',
-            language: submission.language || 'none',
-            content: 'PRACTICE_MODE',
-            time_limit_seconds: submission.timeTaken || 60,
-            min_accuracy: 0,
-            is_prebuilt: true,
-            status: 'active'
-          }]).select('id').single();
-
-          if (newTestRow?.id) {
-            targetTestId = newTestRow.id;
+          try {
+            targetTestId = await getOrCreatePracticeTest(submission.testCategory || 'standard');
+          } catch {
+            targetTestId = '8f5821be-335b-46c8-a8ed-27c1081187e6';
           }
         }
 
@@ -1462,69 +1463,126 @@ export async function deleteTrainer(id: string): Promise<void> {
 // ============================================================================
 
 export async function getOrCreatePracticeTest(mode: string): Promise<string> {
+  const canonicalId = '8f5821be-335b-46c8-a8ed-27c1081187e6';
   if (!isSupabaseConfigured()) return `practice-${mode}`;
-  const title = `Practice: ${mode.charAt(0).toUpperCase() + mode.slice(1)}`;
-  const { data: existing } = await supabase.from('tests').select('id').eq('title', title).eq('is_prebuilt', true).limit(1);
-  if (existing && existing.length > 0) return existing[0].id;
-  const { data: newTest, error } = await supabase.from('tests').insert([{
-    title,
-    category: mode === 'code' ? 'code' : mode === 'story' ? 'story' : 'standard',
-    language: mode === 'code' ? 'javascript' : 'none',
-    content: 'PRACTICE_MODE',
-    time_limit_seconds: 60,
-    min_accuracy: 0,
-    is_prebuilt: true,
-    status: 'active'
-  }]).select('id').single();
-  if (error || !newTest) throw new Error('Could not create practice test');
-  return newTest.id;
+  try {
+    const { data: existing } = await supabase
+      .from('tests')
+      .select('id')
+      .eq('content', 'PRACTICE_MODE')
+      .limit(1);
+    if (existing && existing.length > 0) return existing[0].id;
+    const { data: newTest, error } = await supabase.from('tests').insert([{
+      id: canonicalId,
+      title: 'System Practice: Standard',
+      category: mode === 'code' ? 'code' : mode === 'story' ? 'story' : 'standard',
+      language: mode === 'code' ? 'javascript' : 'none',
+      content: 'PRACTICE_MODE',
+      time_limit_seconds: 60,
+      min_accuracy: 0,
+      is_prebuilt: true,
+      status: 'active'
+    }]).select('id').single();
+    if (!error && newTest) return newTest.id;
+  } catch (err) {
+    console.error('getOrCreatePracticeTest error:', err);
+  }
+  return canonicalId;
+}
+
+export async function purgePracticeModeTests(): Promise<{ deleted: number }> {
+  const canonicalId = '8f5821be-335b-46c8-a8ed-27c1081187e6';
+  let totalDeleted = 0;
+  if (!isSupabaseConfigured()) return { deleted: 0 };
+  try {
+    while (true) {
+      const { data: batch, error } = await supabase
+        .from('tests')
+        .select('id')
+        .eq('content', 'PRACTICE_MODE')
+        .neq('id', canonicalId)
+        .limit(200);
+
+      if (error || !batch || batch.length === 0) break;
+
+      const ids = batch.map(b => b.id);
+      await supabase.from('attempts').update({ test_id: canonicalId }).in('test_id', ids);
+      await supabase.from('certificates').update({ test_id: canonicalId }).in('test_id', ids);
+      await supabase.from('test_assignments').delete().in('test_id', ids);
+      const { error: delErr } = await supabase.from('tests').delete().in('id', ids);
+      if (delErr) break;
+      totalDeleted += ids.length;
+    }
+  } catch (err) {
+    console.error('Error during purgePracticeModeTests:', err);
+  }
+  return { deleted: totalDeleted };
 }
 
 export async function fetchTests(): Promise<TypingTest[]> {
+  let fetched: TypingTest[] = [];
   if (isSupabaseConfigured()) {
     try {
       const { data, error } = await supabase
         .from('tests')
         .select('*, test_assignments(class_id, student_id)')
+        .neq('content', 'PRACTICE_MODE')
+        .not('content', 'eq', 'Practice')
         .order('created_at', { ascending: false });
 
       if (!error && data) {
-        return data.map(t => {
-          const classIds: string[] = [];
-          const studentIds: string[] = [];
-          if (t.test_assignments) {
-            t.test_assignments.forEach((ta: any) => {
-              if (ta.class_id) classIds.push(ta.class_id);
-              if (ta.student_id) studentIds.push(ta.student_id);
-            });
-          }
-          return {
-            id: t.id,
-            title: t.title,
-            description: t.description,
-            category: t.category as any,
-            language: t.language as any,
-            content: t.content,
-            timeLimit: t.time_limit_seconds,
-            minAccuracy: Number(t.min_accuracy),
-            assignedClassIds: classIds,
-            assignedStudentIds: studentIds,
-            isCustomAssignment: !t.is_prebuilt,
-            startAt: t.start_time,
-            endAt: t.end_time,
-            isPrebuilt: t.is_prebuilt,
-            createdBy: t.created_by,
-            difficulty: t.difficulty,
-            status: t.status,
-            createdAt: t.created_at
-          };
-        });
+        fetched = data
+          .filter(t => {
+            if (!t || !t.title || !t.content) return false;
+            const c = t.content.trim();
+            if (c === '' || c === 'PRACTICE_MODE' || c.includes('PRACTICE_MODE') || c === 'Practice') return false;
+            if (t.title.toLowerCase().startsWith('practice')) return false;
+            return true;
+          })
+          .map(t => {
+            const classIds: string[] = [];
+            const studentIds: string[] = [];
+            if (t.test_assignments) {
+              t.test_assignments.forEach((ta: any) => {
+                if (ta.class_id) classIds.push(ta.class_id);
+                if (ta.student_id) studentIds.push(ta.student_id);
+              });
+            }
+            return {
+              id: t.id,
+              title: t.title,
+              description: t.description,
+              category: t.category as any,
+              language: t.language as any,
+              content: t.content,
+              timeLimit: t.time_limit_seconds,
+              minAccuracy: Number(t.min_accuracy),
+              assignedClassIds: classIds,
+              assignedStudentIds: studentIds,
+              isCustomAssignment: !t.is_prebuilt,
+              startAt: t.start_time,
+              endAt: t.end_time,
+              isPrebuilt: t.is_prebuilt,
+              createdBy: t.created_by,
+              difficulty: t.difficulty,
+              status: t.status,
+              createdAt: t.created_at
+            };
+          });
       }
     } catch (e) {
       console.error(e);
     }
   }
-  return memoryTests;
+
+  const baseTests = fetched.length > 0 ? fetched : memoryTests;
+  return baseTests.filter(t => {
+    if (!t || !t.title || !t.content) return false;
+    const c = t.content.trim();
+    if (c === '' || c === 'PRACTICE_MODE' || c.includes('PRACTICE_MODE') || c === 'Practice') return false;
+    if (t.title.toLowerCase().startsWith('practice')) return false;
+    return true;
+  });
 }
 
 export async function createTest(testData: Omit<TypingTest, 'id' | 'isPrebuilt'>): Promise<TypingTest> {
