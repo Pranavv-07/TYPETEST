@@ -15,6 +15,9 @@ import { CertificateGeneratorModal } from './CertificateGeneratorModal';
 import { CertificateModal } from './CertificateModal';
 import { ExcelStudentImportModal } from './ExcelStudentImportModal';
 import { TrainerAcademyManagement } from './academy/TrainerAcademyManagement';
+import { TrainerMyClassesView } from './trainer/TrainerMyClassesView';
+import { TrainerClassRosterView } from './trainer/TrainerClassRosterView';
+import { StudentDetailProfileView } from './trainer/StudentDetailProfileView';
 import { formatISTDateTime, formatISTDate } from '../utils/dateUtils';
 import {
   downloadStudentImportTemplate,
@@ -88,12 +91,21 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
     generateTestReport,
     deleteReport,
     resetStudentAttempt,
-    downloadReportCSV
+    downloadReportCSV,
+    violations
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<
     'monitoring' | 'testbank' | 'students' | 'classes' | 'reports' | 'certificates' | 'academy'
   >('monitoring');
+
+  // Class Management & Student Detail Navigation States (Screens A -> B -> C)
+  const [selectedClassRoom, setSelectedClassRoom] = useState<ClassRoom | null>(null);
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+
+  const authorizedClasses = useMemo(() => {
+    return classes;
+  }, [classes]);
 
   // Modals & UI States
   const [selectedLeaderboardTest, setSelectedLeaderboardTest] = useState<TypingTest | null>(null);
@@ -633,7 +645,9 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
 
           {/* Test Bank Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {tests.map(test => {
+            {tests
+              .filter(t => t && t.title && t.content && t.content.trim().length > 0)
+              .map(test => {
               const assignedClassNames = (test.assignedClassIds || [])
                 .map(cId => classes.find(c => c.id === cId)?.name)
                 .filter(Boolean);
@@ -844,43 +858,59 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
         </div>
       )}
 
-      {/* TAB 4: CLASSES */}
+      {/* TAB 4: CLASSES & STUDENT PROGRESS ANALYTICS WORKFLOW */}
       {activeTab === 'classes' && (
         <div className="space-y-6">
-          <div className="flex items-center justify-between bg-slate-900 border border-slate-800 p-5 rounded-3xl shadow-sm">
-            <div>
-              <h2 className="text-lg font-bold text-slate-100">Academic Cohorts & Sections</h2>
-              <p className="text-xs text-slate-400">Manage class sections and assigned mentor faculty.</p>
-            </div>
-            <button
-              onClick={() => setShowCreateClassModal(true)}
-              className="px-4 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Create New Class</span>
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {classes.map(cls => {
-              const enrolledStudents = students.filter(s => s.classId === cls.id);
-              return (
-                <div
-                  key={cls.id}
-                  className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="px-2.5 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                      Active Section
-                    </span>
-                    <span className="text-xs font-mono text-slate-400">{enrolledStudents.length} Students</span>
-                  </div>
-                  <h3 className="text-lg font-bold text-slate-100">{cls.name}</h3>
-                  <p className="text-xs text-slate-400">{cls.description || 'Training section'}</p>
+          {selectedStudent && selectedClassRoom ? (
+            <StudentDetailProfileView
+              student={selectedStudent}
+              classRoom={selectedClassRoom}
+              studentsInClass={students.filter(s => s.classId === selectedClassRoom.id)}
+              submissions={submissions}
+              certificates={certificates}
+              violations={violations}
+              tests={tests}
+              onBackToRoster={() => setSelectedStudent(null)}
+              onSelectStudent={st => setSelectedStudent(st)}
+              onOpenVerification={onOpenVerification}
+            />
+          ) : selectedClassRoom ? (
+            <TrainerClassRosterView
+              classRoom={selectedClassRoom}
+              students={students}
+              submissions={submissions}
+              certificates={certificates}
+              onBack={() => setSelectedClassRoom(null)}
+              onSelectStudent={st => setSelectedStudent(st)}
+            />
+          ) : (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between bg-slate-900 border border-slate-800 p-5 rounded-3xl shadow-sm">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-100">Academic Cohorts & Sections</h2>
+                  <p className="text-xs text-slate-400">Manage class sections and assigned mentor faculty.</p>
                 </div>
-              );
-            })}
-          </div>
+                <button
+                  onClick={() => setShowCreateClassModal(true)}
+                  className="px-4 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Create New Class</span>
+                </button>
+              </div>
+
+              <TrainerMyClassesView
+                classes={authorizedClasses}
+                students={students}
+                submissions={submissions}
+                certificates={certificates}
+                onSelectClass={cls => {
+                  setSelectedClassRoom(cls);
+                  setSelectedStudent(null);
+                }}
+              />
+            </div>
+          )}
         </div>
       )}
 
