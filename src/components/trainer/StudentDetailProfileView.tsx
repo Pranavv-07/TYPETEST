@@ -23,6 +23,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { formatISTDate, formatISTDateTime } from '../../utils/dateUtils';
+import { StudentAvatar } from '../StudentAvatar';
 import {
   ResponsiveContainer,
   LineChart,
@@ -238,10 +239,16 @@ export const StudentDetailProfileView: React.FC<StudentDetailProfileViewProps> =
             </div>
 
             <div className="flex items-center gap-4">
-              {/* Avatar Initials */}
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-emerald-500/20 border border-cyan-500/30 text-cyan-300 font-black text-xl flex items-center justify-center font-mono shadow-inner">
-                {student.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
-              </div>
+              {/* Student Photo / Avatar */}
+              <StudentAvatar
+                rollNo={student.rollNo}
+                name={student.name}
+                avatarUrl={student.avatarUrl}
+                size="lg"
+                rounded="rounded-2xl"
+                border={true}
+                borderColor="border-cyan-500/40"
+              />
 
               <div>
                 <div className="flex items-center gap-2">

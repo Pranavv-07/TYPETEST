@@ -25,6 +25,7 @@ import {
   exportSubmissionsToExcel
 } from '../utils/excelUtils';
 import { purgePracticeModeTests } from '../services/supabaseService';
+import { StudentAvatar } from './StudentAvatar';
 import {
   Users,
   Plus,
@@ -576,7 +577,12 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
                       <td className="py-3 px-4 font-mono font-bold text-emerald-400">
                         {row.student.rollNo}
                       </td>
-                      <td className="py-3 px-4 font-semibold text-slate-200">{row.student.name}</td>
+                      <td className="py-3 px-4 font-semibold text-slate-200">
+                        <div className="flex items-center gap-2.5">
+                          <StudentAvatar rollNo={row.student.rollNo} name={row.student.name} avatarUrl={row.student.avatarUrl} size="sm" rounded="rounded-xl" />
+                          <span>{row.student.name}</span>
+                        </div>
+                      </td>
                       <td className="py-3 px-4 font-mono text-slate-400">
                         {classes.find(c => c.id === row.student.classId)?.name || 'CSE Alpha'}
                       </td>
@@ -927,7 +933,12 @@ export const TrainerDashboard: React.FC<TrainerDashboardProps> = ({ onLaunchTest
                   {filteredStudents.map(std => (
                     <tr key={std.id} className="hover:bg-slate-800/40 transition-colors">
                       <td className="py-3 px-4 font-mono font-bold text-emerald-400">{std.rollNo}</td>
-                      <td className="py-3 px-4 font-semibold text-slate-200">{std.name}</td>
+                      <td className="py-3 px-4 font-semibold text-slate-200">
+                        <div className="flex items-center gap-2.5">
+                          <StudentAvatar rollNo={std.rollNo} name={std.name} avatarUrl={std.avatarUrl} size="sm" rounded="rounded-xl" />
+                          <span>{std.name}</span>
+                        </div>
+                      </td>
                       <td className="py-3 px-4 font-mono text-slate-400">{std.email || '—'}</td>
                       <td className="py-3 px-4 font-mono text-slate-300">
                         {classes.find(c => c.id === std.classId)?.name || 'CSE Alpha'}

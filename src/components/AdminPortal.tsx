@@ -5,6 +5,7 @@ import { ExcelStudentImportModal } from './ExcelStudentImportModal';
 import { CertificateModal } from './CertificateModal';
 import { formatISTDate, formatISTDateTime } from '../utils/dateUtils';
 import { downloadStudentImportTemplate, exportStudentsToExcel } from '../utils/excelUtils';
+import { StudentAvatar } from './StudentAvatar';
 import {
   Shield,
   Users,
@@ -1030,7 +1031,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenVerification }) 
                   return (
                     <tr key={s.id} className="hover:bg-slate-800/40 transition-colors">
                       <td className="p-3 font-mono font-bold text-cyan-400">{s.rollNo}</td>
-                      <td className="p-3 font-semibold">{s.name}</td>
+                      <td className="p-3 font-semibold">
+                        <div className="flex items-center gap-2.5">
+                          <StudentAvatar rollNo={s.rollNo} name={s.name} avatarUrl={s.avatarUrl} size="sm" rounded="rounded-xl" />
+                          <span>{s.name}</span>
+                        </div>
+                      </td>
                       <td className="p-3">
                         {studentClass ? (
                           <span className="text-slate-200 font-medium">{studentClass.name}</span>

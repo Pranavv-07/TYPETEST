@@ -18,6 +18,7 @@ import {
   School
 } from 'lucide-react';
 import { formatISTDate } from '../../utils/dateUtils';
+import { StudentAvatar } from '../StudentAvatar';
 
 interface TrainerClassRosterViewProps {
   classRoom: ClassRoom;
@@ -341,7 +342,10 @@ export const TrainerClassRosterView: React.FC<TrainerClassRosterViewProps> = ({
                       {student.rollNo}
                     </td>
                     <td className="py-3 px-4 font-semibold text-slate-200 group-hover:text-cyan-300 transition-colors">
-                      {student.name}
+                      <div className="flex items-center gap-2.5">
+                        <StudentAvatar rollNo={student.rollNo} name={student.name} avatarUrl={student.avatarUrl} size="sm" rounded="rounded-xl" />
+                        <span>{student.name}</span>
+                      </div>
                     </td>
                     <td className="py-3 px-4 text-center font-mono text-slate-300">
                       {attempted}

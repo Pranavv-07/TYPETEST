@@ -22,6 +22,7 @@ import {
   INITIAL_SUBMISSIONS,
   INITIAL_CERTIFICATES
 } from '../data/initialData';
+import { getStudentPhotoUrl } from '../utils/studentPhotoUtils';
 
 export const isValidUUID = (id?: string | null): boolean => {
   if (!id) return false;
@@ -65,11 +66,17 @@ const loadSavedMemoryStudents = (): Student[] => {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        return parsed.map((s: Student) => ({
+          ...s,
+          avatarUrl: s.avatarUrl || getStudentPhotoUrl(s.rollNo)
+        }));
       }
     }
   } catch {}
-  return [...INITIAL_STUDENTS];
+  return INITIAL_STUDENTS.map(s => ({
+    ...s,
+    avatarUrl: s.avatarUrl || getStudentPhotoUrl(s.rollNo)
+  }));
 };
 
 const saveMemoryStudents = (data: Student[]) => {
@@ -222,6 +229,7 @@ export async function authenticateWithDatabase(
               rollNo: studentData.roll_number,
               email: studentData.email,
               classId: studentData.class_id,
+              avatarUrl: getStudentPhotoUrl(studentData.roll_number),
               role: 'student'
             }
           };
@@ -296,6 +304,7 @@ export async function authenticateWithDatabase(
           rollNo: matchedStudent.rollNo,
           email: matchedStudent.email,
           classId: matchedStudent.classId,
+          avatarUrl: getStudentPhotoUrl(matchedStudent.rollNo),
           role: 'student'
         }
       };
@@ -1083,7 +1092,8 @@ export async function fetchStudents(): Promise<Student[]> {
           studentIdNumber: s.student_id_number,
           username: s.username,
           status: s.status,
-          createdAt: s.created_at
+          createdAt: s.created_at,
+          avatarUrl: getStudentPhotoUrl(s.roll_number)
         }));
       }
     } catch (e) {
@@ -1099,7 +1109,8 @@ export async function createStudent(studentData: Omit<Student, 'id' | 'createdAt
     ...studentData,
     password: defaultPassword,
     id: `std-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    avatarUrl: getStudentPhotoUrl(studentData.rollNo)
   };
 
   if (isSupabaseConfigured()) {

@@ -8,6 +8,7 @@ export interface User {
   rollNo?: string;
   email?: string;
   classId?: string;
+  avatarUrl?: string;
   adminRole?: 'SUPER ADMIN' | 'ADMIN' | 'ACADEMIC ADMIN' | 'EXAM ADMIN';
 }
 
@@ -48,6 +49,7 @@ export interface Student {
   departmentId?: string;
   studentIdNumber?: string;
   username?: string;
+  avatarUrl?: string;
   status?: 'active' | 'inactive' | 'suspended';
   createdAt: string;
 }

@@ -13,6 +13,7 @@ import {
   ExternalLink,
   Award
 } from 'lucide-react';
+import { StudentAvatar } from './StudentAvatar';
 
 interface LeaderboardModalProps {
   test: TypingTest;
@@ -251,13 +252,16 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ test, isOpen
                         </td>
 
                         <td className="py-3 px-4 font-bold uppercase text-slate-100">
-                          <div className="flex items-center gap-2">
-                            <span>{row.name}</span>
-                            {isCurrentUser && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black tracking-wider bg-amber-500 text-slate-950 uppercase">
-                                YOU
-                              </span>
-                            )}
+                          <div className="flex items-center gap-2.5">
+                            <StudentAvatar rollNo={row.rollNo} name={row.name} size="sm" rounded="rounded-xl" />
+                            <div className="flex items-center gap-2">
+                              <span>{row.name}</span>
+                              {isCurrentUser && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black tracking-wider bg-amber-500 text-slate-950 uppercase">
+                                  YOU
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </td>
 

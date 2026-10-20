@@ -12,6 +12,7 @@ import {
   Target,
   AlertCircle
 } from 'lucide-react';
+import { StudentAvatar } from './StudentAvatar';
 
 interface ReportModalProps {
   report: TestReport | null;
@@ -137,7 +138,10 @@ export const ReportModal: React.FC<ReportModalProps> = ({ report, isOpen, onClos
                     </td>
                     <td className="py-3 px-4 font-semibold text-cyan-400">{res.rollNo}</td>
                     <td className="py-3 px-4 font-sans font-bold text-slate-200 uppercase">
-                      {res.studentName}
+                      <div className="flex items-center gap-2.5">
+                        <StudentAvatar rollNo={res.rollNo} name={res.studentName} size="xs" rounded="rounded-lg" />
+                        <span>{res.studentName}</span>
+                      </div>
                     </td>
                     <td className="py-3 px-4">
                       {res.status === 'completed' ? (

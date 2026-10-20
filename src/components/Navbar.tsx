@@ -22,6 +22,7 @@ import {
   CheckCircle2,
   FileCheck
 } from 'lucide-react';
+import { StudentAvatar } from './StudentAvatar';
 
 export type AppView = 'arena' | 'tests' | 'trainer' | 'student' | 'admin' | 'login' | 'multiplayer' | 'academy' | 'leaderboard' | 'verify';
 
@@ -220,9 +221,20 @@ export const Navbar: React.FC<NavbarProps> = ({
                 onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-semibold transition-all cursor-pointer"
               >
-                <div className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-300 flex items-center justify-center font-bold text-[11px]">
-                  {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : 'U'}
-                </div>
+                {currentUser.role === 'student' ? (
+                  <StudentAvatar
+                    rollNo={currentUser.rollNo || currentUser.username}
+                    name={currentUser.name}
+                    avatarUrl={currentUser.avatarUrl}
+                    size="xs"
+                    rounded="rounded-lg"
+                    border={false}
+                  />
+                ) : (
+                  <div className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-300 flex items-center justify-center font-bold text-[11px]">
+                    {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : 'U'}
+                  </div>
+                )}
                 <div className="text-left hidden sm:block">
                   <div className="text-xs font-bold text-slate-200 max-w-[120px] truncate">
                     {currentUser.name}

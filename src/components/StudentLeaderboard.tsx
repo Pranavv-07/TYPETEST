@@ -14,6 +14,7 @@ import {
   Layers,
   GraduationCap
 } from 'lucide-react';
+import { StudentAvatar } from './StudentAvatar';
 
 export const StudentLeaderboard: React.FC = () => {
   const { students, submissions, classes, currentUser } = useApp();
@@ -255,15 +256,20 @@ export const StudentLeaderboard: React.FC = () => {
                       )}
                     </td>
                     <td className="p-4">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-100">{student.name}</span>
-                        {isCurrent && (
-                          <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                            YOU
-                          </span>
-                        )}
+                      <div className="flex items-center gap-2.5">
+                        <StudentAvatar rollNo={student.rollNo} name={student.name} size="sm" rounded="rounded-xl" />
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-slate-100">{student.name}</span>
+                            {isCurrent && (
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                                YOU
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[11px] font-mono text-slate-500">{student.rollNo}</span>
+                        </div>
                       </div>
-                      <span className="text-[11px] font-mono text-slate-500">{student.rollNo}</span>
                     </td>
 
                     {leaderboardMode === 'overall' && (
